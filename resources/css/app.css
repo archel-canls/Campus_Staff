@@ -1,0 +1,55 @@
+@import "tailwindcss";
+
+/* |--------------------------------------------------------------------------
+| Tailwind CSS v4 Configuration
+|--------------------------------------------------------------------------
+*/
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+@theme {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+        'Segoe UI Symbol', 'Noto Color Emoji';
+    
+    /* Menambahkan Variabel Warna Kustom CDI */
+    --color-cdi-blue: #003366;
+    --color-cdi-orange: #FF8C00;
+}
+
+/* |--------------------------------------------------------------------------
+| Custom Layers & Utilities
+|--------------------------------------------------------------------------
+*/
+
+@layer base {
+    /* Class Helper agar memanggil warna lebih mudah di Blade */
+    .bg-cdi { 
+        @apply bg-[--color-cdi-blue]; 
+    }
+    .text-cdi { 
+        @apply text-[--color-cdi-blue]; 
+    }
+    .accent-cdi { 
+        @apply bg-[--color-cdi-orange]; 
+    }
+    .text-accent-cdi {
+        @apply text-[--color-cdi-orange];
+    }
+}
+
+@layer utilities {
+    /* Animasi tambahan jika diperlukan untuk UI Scanner */
+    .scanner-line {
+        height: 2px;
+        background: linear-gradient(to right, transparent, #FF8C00, transparent);
+        animation: scan 2s linear infinite;
+    }
+
+    @keyframes scan {
+        0% { top: 0; }
+        100% { top: 100%; }
+    }
+}
