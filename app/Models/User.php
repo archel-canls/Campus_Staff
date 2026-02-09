@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * Class User
- * * @property int $id
+ * @property int $id
  * @property string $name
  * @property string $username
  * @property string $email
@@ -30,7 +30,7 @@ class User extends Authenticatable
         'username',   // Identitas login utama
         'email',
         'password',
-        'role',       // 'admin' atau 'karyawan'
+        'role',       // 'admin', 'karyawan', atau 'scanner'
         'karyawan_id',
     ];
 
@@ -60,12 +60,12 @@ class User extends Authenticatable
 
     /**
      * Relasi ke profil Karyawan.
-     * Menggunakan withDefault agar tidak error saat Admin mengakses dashboard.
+     * Menggunakan withDefault agar tidak error saat Admin atau Scanner mengakses dashboard.
      */
     public function karyawan(): BelongsTo
     {
         return $this->belongsTo(Karyawan::class, 'karyawan_id')->withDefault([
-            'nama' => $this->name ?? 'Administrator',
+            'nama' => $this->name ?? 'User Sistem',
             'divisi' => 'Management',
             'nip' => '-',
             'status' => 'tetap',
@@ -94,6 +94,14 @@ class User extends Authenticatable
         return $this->role === 'karyawan';
     }
 
+    /**
+     * Mempermudah pengecekan role Scanner.
+     */
+    public function isScanner(): bool
+    {
+        return $this->role === 'scanner';
+    }
+
     /*
     |--------------------------------------------------------------------------
     | ACCESSORS (Atribut Virtual)
@@ -102,7 +110,7 @@ class User extends Authenticatable
 
     /**
      * Mendapatkan inisial nama untuk Avatar UI.
-     * Contoh: "Archel Arisandi" -> "AA"
+     * Contoh: "Scanner Lobby" -> "SL"
      * Akses: $user->initials
      */
     public function getInitialsAttribute(): string
@@ -120,9 +128,9 @@ class User extends Authenticatable
      */
     public function getProfilePhotoAttribute(): ?string
     {
-        // Check apakah relasi karyawan ada dan memiliki foto
+        // Jika scanner atau admin tidak punya relasi karyawan, berikan avatar UI
         if ($this->karyawan && $this->karyawan->foto) {
-            return asset('storage/karyawan/' . $this->karyawan->foto);
+            return asset('storage/karyawan/foto/' . $this->karyawan->foto);
         }
         
         // Mengembalikan placeholder avatar jika foto tidak ada

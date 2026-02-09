@@ -19,7 +19,7 @@
             <span x-show="sidebarOpen" class="font-black uppercase italic text-[10px] tracking-widest">Data Personel</span>
         </a>
 
-        {{-- NEW: Manajemen Divisi --}}
+        {{-- Manajemen Divisi --}}
         <a href="{{ route('divisi.index') }}" 
            class="flex items-center space-x-4 p-4 rounded-[1.5rem] transition-all duration-300 group {{ request()->routeIs('divisi.*') ? 'bg-cdi-orange text-white shadow-lg shadow-orange-500/20' : 'text-white/60 hover:bg-white/5 hover:text-white' }}">
             <i class="fas fa-sitemap w-6 text-center text-sm {{ request()->routeIs('divisi.*') ? 'text-white' : 'group-hover:text-cdi-orange' }}"></i>
@@ -29,21 +29,6 @@
         <div class="px-4 py-4 mt-4" x-show="sidebarOpen">
             <span class="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] italic">Sistem Absensi</span>
         </div>
-
-        {{-- Scanner Barcode --}}
-        <a href="{{ route('absensi.scan') }}" 
-           class="flex items-center space-x-4 p-4 rounded-[1.5rem] transition-all duration-300 group {{ request()->routeIs('absensi.scan') ? 'bg-cdi-orange text-white shadow-lg shadow-orange-500/20' : 'text-white/60 hover:bg-white/5 hover:text-white' }}">
-            <div class="relative">
-                <i class="fas fa-qrcode w-6 text-center text-sm {{ request()->routeIs('absensi.scan') ? 'text-white' : 'group-hover:text-cdi-orange' }}"></i>
-                @if(request()->routeIs('absensi.scan'))
-                    <span class="absolute -top-1 -right-1 flex h-2 w-2">
-                        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-                        <span class="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-                    </span>
-                @endif
-            </div>
-            <span x-show="sidebarOpen" class="font-black uppercase italic text-[10px] tracking-widest text-nowrap">Scanner Barcode</span>
-        </a>
 
         {{-- Log Kehadiran --}}
         <a href="{{ route('absensi.riwayat') }}" 
@@ -76,7 +61,7 @@
             <span class="text-[9px] font-black text-white/30 uppercase tracking-[0.3em] italic">Menu Personel</span>
         </div>
 
-        {{-- Profil Karyawan --}}
+        {{-- Dashboard Karyawan --}}
         <a href="{{ route('karyawan.dashboard') }}" 
            class="flex items-center space-x-4 p-4 rounded-[1.5rem] transition-all duration-300 group {{ request()->routeIs('karyawan.dashboard') ? 'bg-cdi-orange text-white shadow-lg shadow-orange-500/20' : 'text-white/60 hover:bg-white/5 hover:text-white' }}">
             <i class="fas fa-user-circle w-6 text-center text-sm {{ request()->routeIs('karyawan.dashboard') ? 'text-white' : 'group-hover:text-cdi-orange' }}"></i>

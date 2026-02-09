@@ -29,7 +29,20 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // 2. DATA DUMMY KARYAWAN & MAGANG
+        // 2. BUAT AKUN KHUSUS SCANNER (Perangkat di Lobby)
+        // Akun ini hanya bisa akses halaman scan saja
+        User::updateOrCreate(
+            ['username' => 'scanner1'],
+            [
+                'name' => 'Mesin Scanner Lobby',
+                'email' => 'scanner@cdi.id',
+                'password' => Hash::make('password123'),
+                'role' => 'scanner',
+                'karyawan_id' => null,
+            ]
+        );
+
+        // 3. DATA DUMMY KARYAWAN & MAGANG
         // Struktur NIP Baru: YYMM (Masuk) + G (Gender) + YYMM (Lahir) + RRR (Urut)
         $dataKaryawan = [
             [
@@ -143,7 +156,7 @@ class DatabaseSeeder extends Seeder
                         // Data Tanggungan & Finansial
                         'jumlah_tanggungan'     => $data['tanggungan'] ?? 0,
                         'bukti_tanggungan'      => null,
-                        'barcode_token'         => 'BC-' . $data['nip'], // Format barcode CDI
+                        'barcode_token'         => $data['nip'],
                         'gaji_pokok'            => ($data['status'] == 'tetap') ? 5000000 : 2000000,
                         'foto'                  => null,
                     ]
@@ -171,10 +184,10 @@ class DatabaseSeeder extends Seeder
         // Memberikan feedback di terminal
         $this->command->info('✅ Database Berhasil Di-seed/Update dengan NIP Baru!');
         $this->command->warn('--------------------------------------------------');
-        $this->command->info('Login Admin    : admin  | password123');
-        $this->command->info('Login Karyawan : archel | password123');
-        $this->command->info('Login Magang   : budi   | password123');
-        $this->command->info('Login Magang 2 : sitia  | password123');
+        $this->command->info('Login Admin    : admin    | password123');
+        $this->command->info('Login Scanner  : scanner1 | password123');
+        $this->command->info('Login Karyawan : archel   | password123');
+        $this->command->info('Login Magang   : budi     | password123');
         $this->command->warn('--------------------------------------------------');
     }
 }

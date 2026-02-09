@@ -22,9 +22,13 @@ return new class extends Migration
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             
-            // Role user untuk RBAC (Role Based Access Control)
-            // 'admin' memiliki akses penuh, 'karyawan' memiliki akses terbatas pada dashboard diri sendiri.
-            $table->enum('role', ['admin', 'karyawan'])->default('karyawan');
+            /**
+             * Role user untuk RBAC (Role Based Access Control)
+             * - 'admin': Akses penuh ke dashboard, laporan, dan manajemen.
+             * - 'karyawan': Akses ke dashboard pribadi dan slip gaji.
+             * - 'scanner': Akses terbatas hanya untuk halaman scanner barcode.
+             */
+            $table->enum('role', ['admin', 'karyawan', 'scanner'])->default('karyawan');
             
             /**
              * Relasi ke tabel karyawans:

@@ -15,10 +15,15 @@ use Illuminate\Support\Facades\Auth;
 
 Route::get('/', function () {
     if (Auth::check()) {
-        // Menggunakan null-safe operator untuk keamanan
-        return Auth::user()?->role === 'admin' 
-            ? redirect()->route('admin.dashboard') 
-            : redirect()->route('karyawan.dashboard');
+        $role = Auth::user()->role;
+        
+        if ($role === 'admin') {
+            return redirect()->route('admin.dashboard');
+        } elseif ($role === 'scanner') {
+            return redirect()->route('absensi.scan');
+        } else {
+            return redirect()->route('karyawan.dashboard');
+        }
     }
     return redirect()->route('login');
 });
@@ -42,10 +47,23 @@ Route::post('/logout', [AuthController::class, 'logout'])
 
 /*
 |--------------------------------------------------------------------------
-| 3. GRUP ADMIN (PREFIX: admin)
+| 3. GRUP SCANNER & ADMIN (Akses Khusus Mesin Scanner)
 |--------------------------------------------------------------------------
-| Pastikan middleware 'role' sudah didaftarkan di bootstrap/app.php
-| atau Kernel.php untuk mengecek kolom role di tabel users.
+| Role 'scanner' hanya boleh mengakses halaman ini. 
+| Admin juga diberi akses untuk keperluan monitoring/testing.
+*/
+
+Route::middleware(['auth', 'role:admin,scanner'])->group(function () {
+    Route::prefix('absensi')->group(function () {
+        Route::get('/scan', [AbsensiController::class, 'scan'])->name('absensi.scan');
+        Route::post('/submit', [AbsensiController::class, 'submit'])->name('absensi.submit');
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| 4. GRUP ADMIN (PREFIX: admin)
+|--------------------------------------------------------------------------
 */
 
 Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
@@ -58,10 +76,8 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
     // CRUD Karyawan (Data Personel)
     Route::resource('manajemen-karyawan', ManajemenKaryawanController::class);
 
-    // Fitur Absensi (Scanner & Laporan Rekap)
+    // Fitur Absensi (Hanya Laporan & Riwayat untuk Admin)
     Route::prefix('absensi')->group(function () {
-        Route::get('/scan', [AbsensiController::class, 'scan'])->name('absensi.scan');
-        Route::post('/submit', [AbsensiController::class, 'submit'])->name('absensi.submit');
         Route::get('/riwayat', [AbsensiController::class, 'riwayat'])->name('absensi.riwayat');
         Route::get('/laporan', [AbsensiController::class, 'laporan'])->name('absensi.laporan');
     });
@@ -87,7 +103,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| 4. GRUP KARYAWAN (PREFIX: karyawan)
+| 5. GRUP KARYAWAN (PREFIX: karyawan)
 |--------------------------------------------------------------------------
 */
 
