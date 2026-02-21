@@ -30,7 +30,7 @@ class AuthController extends Controller
      */
     public function login(Request $request)
     {
-        $credentials = $request->validate([
+        $request->validate([
             'username' => 'required|string',
             'password' => 'required|string',
         ], [
@@ -38,14 +38,27 @@ class AuthController extends Controller
             'password.required' => 'Password tidak boleh kosong.',
         ]);
 
-        if (Auth::attempt($credentials, $request->has('remember'))) {
-            $request->session()->regenerate();
+        // Cari user berdasarkan username
+        $user = User::where('username', $request->username)->first();
+
+        if ($user) {
+            // Cek apakah password cocok
+            if (Hash::check($request->password, $user->password)) {
+                Auth::login($user, $request->has('remember'));
+                $request->session()->regenerate();
+                
+                return $this->redirectBasedOnRole($user);
+            }
             
-            return $this->redirectBasedOnRole(Auth::user());
+            // Jika password salah
+            return back()->withErrors([
+                'username' => 'Password yang Anda masukkan salah.',
+            ])->withInput($request->only('username'));
         }
 
+        // Jika username tidak ditemukan
         return back()->withErrors([
-            'username' => 'Username atau password salah.',
+            'username' => 'Username tidak terdaftar dalam sistem.',
         ])->withInput($request->only('username'));
     }
 
@@ -131,9 +144,11 @@ class AuthController extends Controller
 
         DB::beginTransaction();
 
+        $namaFoto = null;
+        $namaBukti = null;
+
         try {
             // 1. Handling Upload Foto Profil
-            $namaFoto = null;
             if ($request->hasFile('foto')) {
                 $file = $request->file('foto');
                 $namaFoto = $request->nip . '_profil_' . time() . '.' . $file->getClientOriginalExtension();
@@ -141,7 +156,6 @@ class AuthController extends Controller
             }
 
             // 2. Handling Upload Bukti Tanggungan
-            $namaBukti = null;
             if ($request->hasFile('bukti_tanggungan')) {
                 $fileBukti = $request->file('bukti_tanggungan');
                 $namaBukti = $request->nip . '_bukti_' . time() . '.' . $fileBukti->getClientOriginalExtension();

@@ -17,7 +17,10 @@
                 <div class="flex flex-wrap gap-4">
                     <div class="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10">
                         <p class="text-[8px] font-black text-white/50 uppercase tracking-widest">Divisi</p>
-                        <p class="text-xs font-bold text-white uppercase italic">{{ Auth::user()->karyawan->divisi ?? '-' }}</p>
+                        {{-- PERBAIKAN: Mengambil properti 'nama' dari objek divisi agar tidak muncul format JSON --}}
+                        <p class="text-xs font-bold text-white uppercase italic">
+                            {{ Auth::user()->karyawan->divisi->nama ?? '-' }}
+                        </p>
                     </div>
                     <div class="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl border border-white/10">
                         <p class="text-[8px] font-black text-white/50 uppercase tracking-widest">Status</p>

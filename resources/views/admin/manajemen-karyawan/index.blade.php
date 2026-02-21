@@ -36,11 +36,11 @@
         </div>
         <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm group">
             <p class="text-[10px] font-black text-cdi-orange uppercase tracking-widest">Anak Magang</p>
-            <p class="text-3xl font-black text-cdi mt-1">{{ $karyawans->where('status', 'magang')->count() }}</p>
+            <p class="text-3xl font-black text-cdi mt-1">{{ $karyawans->whereIn('status', ['magang_kampus', 'magang_mandiri'])->count() }}</p>
         </div>
         <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm group">
-            <p class="text-[10px] font-black text-green-400 uppercase tracking-widest">Aktif Bulan Ini</p>
-            <p class="text-3xl font-black text-cdi mt-1">{{ $karyawans->count() }} <span class="text-[10px] text-slate-300 italic font-normal">Personel</span></p>
+            <p class="text-[10px] font-black text-green-400 uppercase tracking-widest">Departemen</p>
+            <p class="text-3xl font-black text-cdi mt-1">{{ \App\Models\Divisi::count() }} <span class="text-[10px] text-slate-300 italic font-normal">Divisi</span></p>
         </div>
     </div>
 
@@ -50,10 +50,10 @@
             <i class="fas fa-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
             <input type="text" id="searchInput" placeholder="CARI NAMA ATAU NIP..." class="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-[11px] font-bold text-cdi outline-none focus:ring-2 focus:ring-cdi-orange/20 transition-all uppercase">
         </div>
-        <select class="bg-slate-50 border-none rounded-2xl py-4 px-6 text-[11px] font-bold text-cdi outline-none cursor-pointer uppercase">
+        <select id="filterDivisi" class="bg-slate-50 border-none rounded-2xl py-4 px-6 text-[11px] font-bold text-cdi outline-none cursor-pointer uppercase">
             <option value="">Semua Divisi</option>
-            @foreach($karyawans->pluck('divisi')->unique() as $div)
-                <option value="{{ $div }}">{{ $div }}</option>
+            @foreach(\App\Models\Divisi::all() as $div)
+                <option value="{{ $div->nama }}">{{ $div->nama }}</option>
             @endforeach
         </select>
     </div>
@@ -79,7 +79,7 @@
                 </thead>
                 <tbody class="divide-y divide-slate-50">
                     @forelse($karyawans as $k)
-                    <tr class="hover:bg-slate-50/80 transition-all group table-row-item">
+                    <tr class="hover:bg-slate-50/80 transition-all group table-row-item" data-divisi="{{ $k->divisi->nama ?? 'N/A' }}">
                         <td class="px-8 py-6">
                             <div class="flex items-center space-x-5">
                                 <div class="relative">
@@ -100,8 +100,8 @@
                         </td>
                         <td class="px-8 py-6">
                             <div class="flex flex-col">
-                                <span class="text-[11px] font-black text-cdi uppercase italic">{{ $k->divisi }}</span>
-                                <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">Anggota Tim</span>
+                                <span class="text-[11px] font-black text-cdi uppercase italic">{{ $k->divisi->nama ?? 'TANPA DIVISI' }}</span>
+                                <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-1">{{ $k->jabatan }}</span>
                             </div>
                         </td>
                         <td class="px-8 py-6">
@@ -115,12 +115,13 @@
                             @else
                                 <div class="flex flex-col gap-2">
                                     <span class="bg-orange-50 text-cdi-orange px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest w-fit border border-orange-100">
-                                        <i class="fas fa-user-graduate mr-1"></i> Peserta Magang
+                                        <i class="fas fa-user-graduate mr-1"></i> 
+                                        {{ $k->status == 'magang_kampus' ? 'Magang Kampus' : 'Magang Mandiri' }}
                                     </span>
                                     <div class="w-32 h-1 bg-slate-100 rounded-full overflow-hidden">
-                                        <div class="bg-cdi-orange h-full rounded-full" style="width: 65%"></div> {{-- Contoh progress --}}
+                                        <div class="bg-cdi-orange h-full rounded-full" style="width: 100%"></div>
                                     </div>
-                                    <span class="text-[8px] font-bold text-slate-400 uppercase italic">{{ $k->instansi }}</span>
+                                    <span class="text-[8px] font-bold text-slate-400 uppercase italic">{{ $k->instansi ?? 'Umum' }}</span>
                                 </div>
                             @endif
                         </td>
@@ -164,16 +165,28 @@
 </div>
 
 <script>
-    // Live Search Functionality
-    document.getElementById('searchInput').addEventListener('keyup', function() {
-        let filter = this.value.toUpperCase();
-        let rows = document.querySelectorAll('.table-row-item');
-        
+    // Live Search & Filter Functionality
+    const searchInput = document.getElementById('searchInput');
+    const filterDivisi = document.getElementById('filterDivisi');
+    const rows = document.querySelectorAll('.table-row-item');
+
+    function performFilter() {
+        const searchText = searchInput.value.toUpperCase();
+        const selectedDivisi = filterDivisi.value.toUpperCase();
+
         rows.forEach(row => {
-            let text = row.innerText.toUpperCase();
-            row.style.display = text.includes(filter) ? '' : 'none';
+            const rowText = row.innerText.toUpperCase();
+            const rowDivisi = row.getAttribute('data-divisi').toUpperCase();
+            
+            const matchesSearch = rowText.includes(searchText);
+            const matchesDivisi = selectedDivisi === "" || rowDivisi === selectedDivisi;
+
+            row.style.display = (matchesSearch && matchesDivisi) ? '' : 'none';
         });
-    });
+    }
+
+    searchInput.addEventListener('keyup', performFilter);
+    filterDivisi.addEventListener('change', performFilter);
 </script>
 
 <style>

@@ -81,13 +81,33 @@
                             $abs = $karyawan->absensis->first();
                             $izin = $karyawan->perizinans->first();
                             $txtTerlambat = null;
+                            $statusPulang = null;
+                            $txtLembur = null;
                             
+                            // Logika Masuk (Terlambat)
                             if($abs && !$izin) {
-                                // Batas jam masuk 08:00
                                 $jamMasukKantor = \Carbon\Carbon::parse($abs->jam_masuk)->startOfDay()->setHour(8);
                                 if ($abs->jam_masuk->gt($jamMasukKantor)) {
-                                    $diff = $abs->jam_masuk->diff($jamMasukKantor);
-                                    $txtTerlambat = $diff->format('%h Jam %i Menit');
+                                    $diffIn = $abs->jam_masuk->diff($jamMasukKantor);
+                                    $txtTerlambat = $diffIn->format('%h Jam %i Menit');
+                                }
+
+                                // Logika Pulang: JAM PULANG 16:00
+                                $jamPulangKantor = \Carbon\Carbon::parse($abs->jam_masuk)->startOfDay()->setHour(16); 
+                                
+                                if($abs->jam_keluar) {
+                                    $jamKeluar = \Carbon\Carbon::parse($abs->jam_keluar);
+                                    // Lembur jika lebih dari 30 menit setelah jam 16:00
+                                    if($jamKeluar->gt($jamPulangKantor->copy()->addMinutes(30))) {
+                                        $statusPulang = 'lembur';
+                                        $diffOut = $jamKeluar->diff($jamPulangKantor);
+                                        $txtLembur = $diffOut->format('%hj %im');
+                                    }
+                                } else {
+                                    // Deteksi jika sudah lewat hari namun belum absen keluar
+                                    if(\Carbon\Carbon::now()->gt($today->copy()->endOfDay())) {
+                                        $statusPulang = 'alpha_keluar';
+                                    }
                                 }
                             }
                         @endphp
@@ -134,7 +154,21 @@
                             </td>
                             <td class="px-8 py-6 text-right">
                                 @if($abs && $abs->jam_keluar)
-                                    <span class="font-black text-cdi-orange text-lg tracking-tighter">{{ \Carbon\Carbon::parse($abs->jam_keluar)->format('H:i') }}</span>
+                                    <div class="flex flex-col items-end">
+                                        <span class="font-black {{ $statusPulang == 'lembur' ? 'text-blue-600' : 'text-cdi-orange' }} text-lg tracking-tighter">
+                                            {{ \Carbon\Carbon::parse($abs->jam_keluar)->format('H:i') }}
+                                        </span>
+                                        @if($statusPulang == 'lembur')
+                                            <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-[7px] font-black uppercase rounded italic">Lembur +{{ $txtLembur }}</span>
+                                        @else
+                                            <p class="text-[8px] font-bold text-slate-400 uppercase italic">Selesai Tugas</p>
+                                        @endif
+                                    </div>
+                                @elseif($statusPulang == 'alpha_keluar')
+                                    <div class="flex flex-col items-end">
+                                        <span class="font-black text-red-300 text-lg tracking-tighter">--:--</span>
+                                        <span class="text-[7px] font-black text-red-500 uppercase italic bg-red-50 px-2 py-0.5 rounded border border-red-100">Belum melakukan absensi keluar</span>
+                                    </div>
                                 @else
                                     <span class="font-black text-slate-200 text-lg tracking-tighter">--:--</span>
                                 @endif
@@ -224,7 +258,7 @@
             </div>
         </div>
 
-        {{-- BAGIAN 2: RIWAYAT PERIZINAN (SUDAH DIKONFIRMASI) --}}
+        {{-- BAGIAN 2: RIWAYAT PERIZINAN --}}
         <div class="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden opacity-80 hover:opacity-100 transition-opacity">
             <div class="px-8 py-6 border-b border-slate-50 bg-slate-100/30">
                 <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest italic">Riwayat Konfirmasi Terakhir (10 Data)</h4>

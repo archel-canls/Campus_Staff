@@ -4,33 +4,41 @@
 @section('page_title', 'Rekapitulasi Kehadiran Personel')
 
 @section('content')
-<div class="space-y-8 pb-20">
+<div class="space-y-8 pb-20" x-data="{ showLiburModal: false }">
     {{-- FILTER & ACTION CARD --}}
     <div class="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-6 print:hidden">
-        <form action="{{ route('absensi.laporan') }}" method="GET" class="flex flex-wrap items-center gap-4">
-            <div class="flex items-center bg-slate-50 rounded-2xl px-4 py-1 border border-slate-100">
-                <i class="fas fa-calendar-alt text-cdi-orange mr-2"></i>
-                <select name="bulan" class="bg-transparent border-none py-3 font-black text-[11px] text-cdi outline-none uppercase cursor-pointer">
-                    @foreach(range(1, 12) as $m)
-                        <option value="{{ $m }}" {{ request('bulan', date('m')) == $m ? 'selected' : '' }}>
-                            {{ \Carbon\Carbon::create()->month($m)->translatedFormat('F') }}
-                        </option>
-                    @endforeach
-                </select>
-            </div>
-            <div class="flex items-center bg-slate-50 rounded-2xl px-4 py-1 border border-slate-100">
-                <i class="fas fa-layer-group text-cdi-orange mr-2"></i>
-                <select name="tahun" class="bg-transparent border-none py-3 font-black text-[11px] text-cdi outline-none uppercase cursor-pointer">
-                    @php $yNow = date('Y'); @endphp
-                    @for($y = $yNow; $y >= $yNow - 2; $y--)
-                        <option value="{{ $y }}" {{ request('tahun', $yNow) == $y ? 'selected' : '' }}>{{ $y }}</option>
-                    @endfor
-                </select>
-            </div>
-            <button type="submit" class="bg-cdi text-white px-8 py-4 rounded-2xl font-black uppercase italic text-[10px] hover:bg-cdi-orange transition-all shadow-lg shadow-blue-900/10">
-                TAMPILKAN LAPORAN
+        <div class="flex flex-wrap items-center gap-4">
+            <form action="{{ route('absensi.laporan') }}" method="GET" class="flex flex-wrap items-center gap-4">
+                <div class="flex items-center bg-slate-50 rounded-2xl px-4 py-1 border border-slate-100">
+                    <i class="fas fa-calendar-alt text-cdi-orange mr-2"></i>
+                    <select name="bulan" class="bg-transparent border-none py-3 font-black text-[11px] text-cdi outline-none uppercase cursor-pointer">
+                        @foreach(range(1, 12) as $m)
+                            <option value="{{ $m }}" {{ request('bulan', date('m')) == $m ? 'selected' : '' }}>
+                                {{ \Carbon\Carbon::create()->month($m)->translatedFormat('F') }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="flex items-center bg-slate-50 rounded-2xl px-4 py-1 border border-slate-100">
+                    <i class="fas fa-layer-group text-cdi-orange mr-2"></i>
+                    <select name="tahun" class="bg-transparent border-none py-3 font-black text-[11px] text-cdi outline-none uppercase cursor-pointer">
+                        @php $yNow = date('Y'); @endphp
+                        @for($y = $yNow; $y >= $yNow - 2; $y--)
+                            <option value="{{ $y }}" {{ request('tahun', $yNow) == $y ? 'selected' : '' }}>{{ $y }}</option>
+                        @endfor
+                    </select>
+                </div>
+                <button type="submit" class="bg-cdi text-white px-8 py-4 rounded-2xl font-black uppercase italic text-[10px] hover:bg-cdi-orange transition-all shadow-lg shadow-blue-900/10">
+                    TAMPILKAN LAPORAN
+                </button>
+            </form>
+
+            {{-- TOMBOL ATUR HARI LIBUR --}}
+            <button @click="showLiburModal = true" class="bg-red-50 text-red-600 px-6 py-4 rounded-2xl font-black uppercase italic text-[10px] border border-red-100 hover:bg-red-600 hover:text-white transition-all">
+                <i class="fas fa-umbrella-beach mr-2"></i> Atur Hari Libur
             </button>
-        </form>
+        </div>
+
         <button onclick="window.print()" class="text-cdi font-black text-[10px] uppercase italic hover:text-cdi-orange transition-colors">
             <i class="fas fa-file-pdf mr-2"></i> Cetak Semua (A4)
         </button>
@@ -52,7 +60,6 @@
                     @foreach($laporan as $row)
                     @php
                         $now = \Carbon\Carbon::now();
-                        // KONVERSI KE INTEGER UNTUK MENGHINDARI TYPE ERROR
                         $targetBulan = (int) request('bulan', date('m'));
                         $targetTahun = (int) request('tahun', date('Y'));
                         
@@ -64,10 +71,17 @@
                         $alpaCount = 0;
                         $hariKerjaBerlalu = 0;
 
+                        $liburBulanIni = \App\Models\HariLibur::whereYear('tanggal', $targetTahun)
+                                            ->whereMonth('tanggal', $targetBulan)
+                                            ->pluck('tanggal')
+                                            ->map(fn($t) => \Carbon\Carbon::parse($t)->format('Y-m-d'))
+                                            ->toArray();
+
                         for($d=1; $d<=$totalHari; $d++) {
                             $checkDate = \Carbon\Carbon::create($targetTahun, $targetBulan, $d)->startOfDay();
-                            
-                            if($checkDate->isSunday()) continue;
+                            $dateString = $checkDate->format('Y-m-d');
+
+                            if($checkDate->isSunday() || in_array($dateString, $liburBulanIni)) continue;
 
                             $absensi = $row->absensis->first(fn($a) => \Carbon\Carbon::parse($a->jam_masuk)->isSameDay($checkDate));
                             $izin = $row->perizinans->where('status', 'disetujui')->first(fn($i) => $checkDate->between(\Carbon\Carbon::parse($i->tanggal_mulai), \Carbon\Carbon::parse($i->tanggal_selesai)));
@@ -79,9 +93,7 @@
                                 $izinCount++;
                                 $hariKerjaBerlalu++;
                             } else {
-                                // Jam Batas Akhir Kerja (17:00)
                                 $jamBatas = $checkDate->copy()->hour(17);
-                                
                                 if($checkDate->isPast() && !$checkDate->isToday()) {
                                     $alpaCount++;
                                     $hariKerjaBerlalu++;
@@ -89,7 +101,6 @@
                                     $alpaCount++;
                                     $hariKerjaBerlalu++;
                                 }
-                                // Jika hari ini belum jam 17:00 atau masa depan, tidak dihitung alpa & tidak masuk pembagi skor
                             }
                         }
 
@@ -99,7 +110,10 @@
                     <tr class="hover:bg-slate-50/50 transition-all group">
                         <td class="px-8 py-6">
                             <p class="font-black text-cdi uppercase italic text-sm leading-none">{{ $row->nama }}</p>
-                            <p class="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-tighter">{{ $row->nip }} • {{ $row->divisi }}</p>
+                            {{-- BAGIAN YANG DIUBAH: Mengambil nama dari relasi divisi --}}
+                            <p class="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-tighter">
+                                {{ $row->nip }} • {{ $row->divisi->nama ?? 'Tanpa Divisi' }}
+                            </p>
                         </td>
                         <td class="px-8 py-6">
                             <div class="flex justify-center gap-3">
@@ -155,12 +169,15 @@
                                         @for($dia = 1; $dia <= $totalHari; $dia++)
                                             @php
                                                 $currentDate = \Carbon\Carbon::create($targetTahun, $targetBulan, $dia);
+                                                $dateStr = $currentDate->format('Y-m-d');
                                                 $isSunday = $currentDate->isSunday();
+                                                $isLibur = in_array($dateStr, $liburBulanIni);
+
                                                 $absensiHariIni = $row->absensis->first(fn($a) => \Carbon\Carbon::parse($a->jam_masuk)->isSameDay($currentDate));
                                                 $izinHariIni = $row->perizinans->where('status', 'disetujui')->first(fn($i) => $currentDate->between(\Carbon\Carbon::parse($i->tanggal_mulai), \Carbon\Carbon::parse($i->tanggal_selesai)));
                                             @endphp
-                                            <tr class="{{ $isSunday ? 'bg-red-50/30' : '' }}">
-                                                <td class="py-3 font-bold {{ $isSunday ? 'text-red-500' : 'text-cdi' }}">
+                                            <tr class="{{ ($isSunday || $isLibur) ? 'bg-red-50/30' : '' }}">
+                                                <td class="py-3 font-bold {{ ($isSunday || $isLibur) ? 'text-red-500' : 'text-cdi' }}">
                                                     {{ $currentDate->translatedFormat('d M Y') }}
                                                     <span class="block text-[7px] font-medium text-slate-400 uppercase leading-none">{{ $currentDate->translatedFormat('l') }}</span>
                                                 </td>
@@ -175,12 +192,12 @@
                                                         <span class="px-2 py-0.5 rounded bg-green-100 text-green-600 font-black uppercase italic text-[8px]">Hadir</span>
                                                     @elseif($izinHariIni)
                                                         <span class="px-2 py-0.5 rounded bg-blue-100 text-blue-600 font-black uppercase italic text-[8px]">Izin</span>
-                                                    @elseif($isSunday)
-                                                        <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-400 font-black uppercase italic text-[8px]">Libur</span>
+                                                    @elseif($isSunday || $isLibur)
+                                                        <span class="px-2 py-0.5 rounded bg-red-100 text-red-600 font-black uppercase italic text-[8px]">Libur</span>
                                                     @elseif($currentDate->isFuture() || ($currentDate->isToday() && $now->hour < 17))
                                                         <span class="px-2 py-0.5 rounded bg-slate-50 text-slate-300 font-black uppercase italic text-[8px]">Mendatang</span>
                                                     @else
-                                                        <span class="px-2 py-0.5 rounded bg-red-100 text-red-600 font-black uppercase italic text-[8px]">Alpa</span>
+                                                        <span class="px-2 py-0.5 rounded bg-red-100 text-red-600 font-black uppercase italic text-[8px]">Absen</span>
                                                     @endif
                                                 </td>
                                             </tr>
@@ -195,9 +212,54 @@
             </table>
         </div>
     </div>
+
+    {{-- MODAL ATUR HARI LIBUR --}}
+    <div x-show="showLiburModal" 
+         class="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+         x-transition.opacity>
+        <div class="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl p-8" @click.away="showLiburModal = false">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="font-black text-cdi uppercase italic text-lg tracking-tighter">Atur Hari Libur</h3>
+                <button @click="showLiburModal = false" class="text-slate-400 hover:text-red-500"><i class="fas fa-times"></i></button>
+            </div>
+
+            <form action="{{ route('libur.store') }}" method="POST" class="space-y-4">
+                @csrf
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Pilih Tanggal</label>
+                    <input type="date" name="tanggal" required class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-cdi outline-none">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Keterangan</label>
+                    <input type="text" name="keterangan" placeholder="Contoh: Tanggal Merah / Cuti Bersama" required class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-cdi outline-none">
+                </div>
+                <button type="submit" class="w-full bg-cdi text-white py-4 rounded-xl font-black uppercase italic text-[11px] tracking-widest hover:bg-cdi-orange transition-all shadow-lg">
+                    SIMPAN HARI LIBUR
+                </button>
+            </form>
+
+            <div class="mt-8 border-t border-slate-50 pt-6">
+                <p class="text-[10px] font-black text-slate-400 uppercase mb-4">Daftar Libur Bulan Ini</p>
+                <div class="space-y-2 max-h-40 overflow-y-auto pr-2">
+                    @forelse(\App\Models\HariLibur::whereMonth('tanggal', request('bulan', date('m')))->get() as $hl)
+                        <div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                            <div>
+                                <p class="text-[10px] font-black text-cdi uppercase leading-none">{{ \Carbon\Carbon::parse($hl->tanggal)->format('d M Y') }}</p>
+                                <p class="text-[9px] text-slate-400 font-bold mt-1">{{ $hl->keterangan }}</p>
+                            </div>
+                            <form action="{{ route('libur.destroy', $hl->id) }}" method="POST" onsubmit="return confirm('Hapus hari libur ini?')">
+                                @csrf @method('DELETE')
+                                <button type="submit" class="text-red-400 hover:text-red-600 text-xs"><i class="fas fa-trash"></i></button>
+                            </form>
+                        </div>
+                    @empty
+                        <p class="text-[9px] text-slate-300 italic">Belum ada hari libur khusus bulan ini.</p>
+                    @endforelse
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
-
-
 
 <script>
     function toggleDetail(id) {
@@ -226,7 +288,7 @@
 
     @media print {
         .detail-row { display: table-row !important; }
-        header, aside, .print\:hidden, nav { display: none !important; }
+        header, aside, .print\:hidden, nav, .fixed { display: none !important; }
         .bg-white { border: none !important; box-shadow: none !important; }
         body { background: white !important; }
         .rounded-\[3rem\], .rounded-\[2rem\] { border-radius: 0.5rem !important; border: 1px solid #eee !important; }

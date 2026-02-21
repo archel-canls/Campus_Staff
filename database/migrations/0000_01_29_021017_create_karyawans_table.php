@@ -8,20 +8,23 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
-     * Membuat tabel karyawans dengan sinkronisasi penuh terhadap form registrasi CDI 
-     * dan kebutuhan Digital Identity Card.
+     * Membuat tabel karyawans dengan sinkronisasi penuh terhadap form registrasi CDI,
+     * sistem Payroll Hourly Rate, dan kebutuhan Digital Identity Card.
      */
     public function up(): void
     {
         Schema::create('karyawans', function (Blueprint $table) {
             $table->id();
             
-            // --- 01 DATA IDENTITAS UTAMA ---
+            // --- 01 DATA IDENTITAS UTAMA (Sesuai KTP & Standar Perusahaan) ---
             $table->string('nama');
-            // Nomor Induk Pegawai / Kode Personel (12 Digit: YYMM-JK-MMDD-RAND)
+            
+            // Nomor Induk Pegawai (Format Unik: Contoh 2402-L-001)
             $table->string('nip')->unique(); 
-            // NIK KTP (Wajib 16 digit sesuai standar Dukcapil)
+            
+            // NIK KTP (Wajib 16 digit untuk keperluan BPJS & Pajak)
             $table->string('nik', 16)->unique(); 
+            
             $table->string('tempat_lahir');
             $table->date('tanggal_lahir');
             $table->enum('jenis_kelamin', ['L', 'P']);
@@ -30,41 +33,54 @@ return new class extends Migration
             // --- 02 DATA LOKASI & KONTAK ---
             $table->text('alamat_ktp');
             $table->text('alamat_domisili');
-            // Nomor HP Aktif/WhatsApp untuk koordinasi
+            
+            // Nomor HP/WhatsApp (Gunakan string karena diawali angka 0 atau kode +62)
             $table->string('telepon'); 
             
-            // --- 03 JALUR PENDAFTARAN & PEKERJAAN ---
-            // Menampung status: tetap, kontrak, magang_mbkm, magang_ppl, magang_mandiri
+            // --- 03 PEKERJAAN & STRUKTUR ORGANISASI ---
+            // Status: tetap, kontrak, magang_kampus, magang_mandiri
             $table->string('status'); 
-            // Asal Kampus/Sekolah (Contoh: "Universitas Gadjah Mada")
+            
+            // Asal Kampus/Sekolah/Instansi
             $table->string('instansi')->nullable(); 
-            $table->string('divisi')->default('Belum Ditentukan');
-            // Jabatan fungsional (Contoh: "STAFF", "MANAGER", atau "INTERN")
+            
+            // Relasi ke tabel divisis (Foreign Key)
+            $table->foreignId('divisi_id')
+                  ->nullable()
+                  ->constrained('divisis')
+                  ->onDelete('set null'); // Jika divisi dihapus, karyawan tetap ada tapi divisinya null
+            
             $table->string('jabatan')->nullable(); 
             $table->date('tanggal_masuk')->nullable();
             
             // --- 04 KONTAK DARURAT (Emergency Contacts) ---
-            // Kontak Utama (Emergency 1)
             $table->string('emergency_1_nama')->nullable();
             $table->string('emergency_1_hubungan')->nullable();
             $table->string('emergency_1_telp')->nullable();
             
-            // Kontak Cadangan (Emergency 2)
             $table->string('emergency_2_nama')->nullable();
             $table->string('emergency_2_hubungan')->nullable();
             $table->string('emergency_2_telp')->nullable();
             
-            // --- 05 DATA PENDIDIKAN & TANGGUNGAN ---
-            $table->string('pendidikan_terakhir')->nullable(); // SD, SMP, SMA, S1, dsb.
+            // --- 05 DATA PENDIDIKAN & TANGGUNGAN (Dasar Perhitungan Payroll) ---
+            $table->string('pendidikan_terakhir')->nullable(); 
+            $table->string('status_pendidikan')->nullable();   
+            
+            // Digunakan untuk kalkulasi Tunjangan Keluarga di PayrollController
             $table->integer('jumlah_tanggungan')->default(0);
-            $table->string('bukti_tanggungan')->nullable(); // Path file dokumen pendukung (KK/Surat)
+            $table->string('bukti_tanggungan')->nullable();    
             
             // --- 06 SISTEM IDENTITAS DIGITAL & FINANSIAL ---
-            // barcode_token digunakan untuk generate QR Code unik pada kartu digital/absensi (Link ke NIP)
+            // Token unik untuk generate Barcode/QR Code pada ID Card Digital
             $table->string('barcode_token')->unique(); 
-            // Menggunakan decimal untuk akurasi nilai mata uang (IDR)
+            
+            /** * GAJI POKOK (Hourly Rate)
+             * Pada sistem CDI yang baru, kolom ini menyimpan NILAI PER JAM.
+             * Menggunakan decimal 15,2 agar presisi untuk perhitungan keuangan.
+             */
             $table->decimal('gaji_pokok', 15, 2)->default(0); 
-            // Nama file foto profil (Path: storage/app/public/karyawan/foto/...)
+            
+            // Path file foto (storage/app/public/karyawan/foto/...)
             $table->string('foto')->nullable(); 
             
             $table->timestamps();
@@ -77,6 +93,11 @@ return new class extends Migration
      */
     public function down(): void
     {
+        // Lepas foreign key terlebih dahulu jika ada sebelum drop table
+        Schema::table('karyawans', function (Blueprint $table) {
+            $table->dropForeign(['divisi_id']);
+        });
+        
         Schema::dropIfExists('karyawans');
     }
 };

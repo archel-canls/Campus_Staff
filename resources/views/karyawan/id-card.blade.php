@@ -30,7 +30,7 @@
                         <div class="relative group">
                             <div class="w-24 h-24 rounded-[2rem] bg-slate-100 overflow-hidden border-4 border-white shadow-lg relative">
                                 @if($karyawan->foto)
-                                    <img id="preview-foto" src="{{ asset('storage/karyawan/' . $karyawan->foto) }}" class="w-full h-full object-cover">
+                                    <img id="preview-foto" src="{{ asset('storage/karyawan/foto/' . $karyawan->foto) }}" class="w-full h-full object-cover">
                                 @else
                                     <img id="preview-foto" src="https://ui-avatars.com/api/?name={{ urlencode($karyawan->nama) }}&background=003366&color=fff" class="w-full h-full object-cover">
                                 @endif
@@ -83,7 +83,7 @@
                         <div class="space-y-1">
                             <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Pendidikan Terakhir</label>
                             <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 font-bold text-cdi text-sm uppercase italic">
-                                {{ $karyawan->pendidikan_terakhir }}
+                                {{ $karyawan->pendidikan_terakhir }} <span class="text-slate-400 text-[10px]">({{ $karyawan->status_pendidikan }})</span>
                             </div>
                         </div>
 
@@ -142,7 +142,7 @@
                         <div class="space-y-1">
                             <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Divisi & Status</label>
                             <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 font-bold text-cdi text-sm uppercase italic">
-                                {{ $karyawan->divisi }} / <span class="text-cdi-orange">{{ $karyawan->status }}</span>
+                                {{ $karyawan->divisi->nama ?? 'N/A' }} / <span class="text-cdi-orange">{{ str_replace('_', ' ', $karyawan->status) }}</span>
                             </div>
                         </div>
 
@@ -171,7 +171,7 @@
                             <div class="absolute -top-20 -right-20 w-64 h-64 bg-cdi-orange/20 rounded-full blur-3xl"></div>
                             
                             {{-- Header Card --}}
-                            <div class="absolute top-0 w-full h-44 bg-cdi rounded-b-[3rem] shadow-xl overflow-hidden">
+                            <div class="absolute top-0 w-full h-44 {{ $karyawan->divisi ? $karyawan->divisi->bg_color_class : 'bg-cdi' }} rounded-b-[3rem] shadow-xl overflow-hidden">
                                 <div class="absolute inset-0 opacity-20" style="background-image: radial-gradient(#fff 2px, transparent 2px); background-size: 20px 20px;"></div>
                                 <div class="mt-8 w-full text-center relative z-10">
                                     <p class="text-white font-black italic tracking-tighter text-xl uppercase">CAMPUS<span class="text-cdi-orange">STAFF</span></p>
@@ -181,11 +181,12 @@
 
                             {{-- Content --}}
                             <div class="relative mt-24 flex flex-col items-center z-20">
-                                <div class="w-44 h-44 rounded-[2.5rem] bg-white p-2 shadow-2xl rotate-3">
+                                {{-- PERBAIKAN: Menghapus class 'rotate-3' agar foto lurus --}}
+                                <div class="w-44 h-44 rounded-[2.5rem] bg-white p-2 shadow-2xl">
                                     <div class="w-full h-full rounded-[2rem] bg-slate-200 overflow-hidden border-2 border-slate-100 relative">
-                                        <img id="card-foto" src="{{ $karyawan->foto ? asset('storage/karyawan/' . $karyawan->foto) : 'https://ui-avatars.com/api/?name='.urlencode($karyawan->nama).'&background=003366&color=fff' }}" class="w-full h-full object-cover">
+                                        <img id="card-foto" src="{{ $karyawan->foto ? asset('storage/karyawan/foto/' . $karyawan->foto) : 'https://ui-avatars.com/api/?name='.urlencode($karyawan->nama).'&background=003366&color=fff' }}" class="w-full h-full object-cover">
                                         <div class="absolute bottom-0 w-full bg-cdi/80 backdrop-blur-sm py-1.5 text-center">
-                                            <p class="text-[8px] font-black text-white uppercase tracking-widest">{{ $karyawan->status }}</p>
+                                            <p class="text-[8px] font-black text-white uppercase tracking-widest">{{ str_replace('_', ' ', $karyawan->status) }}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -237,8 +238,8 @@
                                      </ul>
                                  </div>
                                  <div class="bg-white/5 backdrop-blur-sm p-4 rounded-2xl border border-white/10 text-center">
-                                     <p class="text-[8px] font-black text-cdi-orange uppercase tracking-widest mb-1 italic">Personal Contact</p>
-                                     <p class="text-[10px] font-bold text-white uppercase">{{ $karyawan->telepon }}</p>
+                                     <p class="text-[8px] font-black text-cdi-orange uppercase tracking-widest mb-1 italic">Division Details</p>
+                                     <p class="text-[10px] font-bold text-white uppercase">{{ $karyawan->divisi->nama ?? 'General' }} - {{ $karyawan->divisi->kode ?? 'CDI' }}</p>
                                  </div>
                              </div>
 
@@ -263,7 +264,7 @@
 </div>
 
 <style>
-    /* CSS untuk Tampilan Web (Jangan diubah) */
+    /* CSS untuk Tampilan Web */
     .perspective-1000 { perspective: 1000px; }
     .preserve-3d { transform-style: preserve-3d; position: relative; }
     .backface-hidden { 
@@ -274,19 +275,14 @@
     .group:hover #flip-card-inner { transform: rotateY(180deg); }
     #flip-card-inner > div:first-child { z-index: 2; }
 
-    /* CSS KHUSUS PRINT (Hanya bagian ini yang dioptimalkan) */
+    /* CSS KHUSUS PRINT */
     @media print {
-        /* 1. Paksa Browser menampilkan warna/background */
         * { 
             -webkit-print-color-adjust: exact !important; 
             print-color-adjust: exact !important; 
         }
-
-        /* 2. Sembunyikan semua elemen kecuali ID Card */
         body * { visibility: hidden; }
         #printable-id-card, #printable-id-card * { visibility: visible; }
-
-        /* 3. Atur Kontainer Card agar tidak melayang di tengah */
         #printable-id-card {
             position: absolute;
             left: 0;
@@ -296,36 +292,28 @@
             box-shadow: none !important;
             transform: none !important;
         }
-
-        /* 4. Matikan animasi flip 3D saat print agar kedua sisi bisa dipisah */
         #flip-card-inner { 
             transform: none !important; 
             display: block !important;
             box-shadow: none !important;
         }
-
-        /* 5. Tampilkan Sisi Depan di Halaman 1 */
         #flip-card-inner > div:first-child {
             position: relative !important;
-            width: 350px; /* Sesuai ukuran asli */
+            width: 350px; 
             height: 553px;
             margin: 0 auto;
-            page-break-after: always; /* Paksa pindah halaman setelah sisi depan */
+            page-break-after: always; 
             z-index: 2;
         }
-
-        /* 6. Tampilkan Sisi Belakang di Halaman 2 */
         .rotate-y-180 {
-            display: flex !important; /* Munculkan kembali */
+            display: flex !important; 
             position: relative !important;
-            transform: none !important; /* Batalkan rotasi agar teks tidak terbalik saat diprint */
+            transform: none !important; 
             width: 350px;
             height: 553px;
             margin: 0 auto;
             visibility: visible !important;
         }
-
-        /* 7. Pengaturan Kertas */
         @page { 
             size: portrait; 
             margin: 0.5cm; 
@@ -369,7 +357,11 @@
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Saving...';
 
-        fetch('{{ route("karyawan.update-foto") }}', { method: 'POST', body: formData })
+        fetch('{{ route("karyawan.update-foto") }}', { 
+            method: 'POST', 
+            body: formData,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
         .then(response => response.json())
         .then(data => {
             if (data.success) {

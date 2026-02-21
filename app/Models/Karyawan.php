@@ -6,12 +6,13 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
 
 /**
  * Model Karyawan
- * Struktur data sinkron dengan Form Registrasi CDI & Migration Terbaru.
+ * Struktur data sinkron dengan Form Registrasi CDI, Migration, Payroll Hourly System, dan Digital ID Card.
  */
 class Karyawan extends Model
 {
@@ -21,7 +22,7 @@ class Karyawan extends Model
 
     /**
      * Mass Assignment Protection
-     * Menampung semua input dari form registrasi multi-step.
+     * Menampung semua input dari form registrasi multi-step (Identitas, Lokasi, Pekerjaan, Kontak Darurat).
      */
     protected $fillable = [
         'nama',
@@ -34,9 +35,9 @@ class Karyawan extends Model
         'alamat_ktp',
         'alamat_domisili',
         'telepon',
-        'status',              // tetap, kontrak, magang_kampus, magang_mandiri
-        'instansi',            // Asal Sekolah/Kampus
-        'divisi',
+        'status',               // tetap, kontrak, magang_kampus, magang_mandiri
+        'instansi',             // Asal Sekolah/Kampus/Perusahaan
+        'divisi_id',            // Relasi ke tabel divisis
         'jabatan',
         'tanggal_masuk',
         
@@ -50,17 +51,18 @@ class Karyawan extends Model
         'emergency_2_hubungan',
         'emergency_2_telp',
 
-        // Data Legacy & Finansial
+        // Data Pendidikan & Finansial
+        'pendidikan_terakhir',
+        'status_pendidikan',    // Lulus, Mahasiswa Aktif, dsb.
         'jumlah_tanggungan',
         'bukti_tanggungan',
-        'pendidikan_terakhir',
         'barcode_token',
-        'gaji_pokok',
+        'gaji_pokok',           // Dalam sistem ini berfungsi sebagai HOURLY RATE (Upah per Jam)
         'foto',
     ];
 
     /**
-     * Casting atribut agar otomatis menjadi tipe data yang sesuai.
+     * Casting atribut agar otomatis menjadi tipe data yang sesuai saat diakses.
      */
     protected $casts = [
         'tanggal_lahir'     => 'date',
@@ -72,7 +74,7 @@ class Karyawan extends Model
     ];
 
     /**
-     * Boot function untuk handling Delete Cascade.
+     * Boot function untuk handling Delete Cascade dan Cleanup File.
      * Memastikan file fisik dan data relasi terhapus saat record karyawan dihapus.
      */
     protected static function boot()
@@ -81,16 +83,10 @@ class Karyawan extends Model
 
         static::deleting(function ($karyawan) {
             // 1. Hapus relasi yang bergantung pada id karyawan
-            // Kita gunakan try-catch atau check method untuk keamanan
-            if ($karyawan->absensis()) {
-                $karyawan->absensis()->delete();
-            }
-            if ($karyawan->perizinans()) {
-                $karyawan->perizinans()->delete();
-            }
+            $karyawan->absensis()->delete();
+            $karyawan->perizinans()->delete();
             
-            // 2. Hapus file fisik (Foto & Bukti Tanggungan) dari storage
-            // Sesuai dengan path di AuthController: karyawan/foto dan karyawan/bukti_tanggungan
+            // 2. Hapus file fisik (Foto & Bukti Tanggungan) dari storage agar tidak membebani server
             if ($karyawan->foto) {
                 Storage::disk('public')->delete('karyawan/foto/' . $karyawan->foto);
             }
@@ -107,9 +103,17 @@ class Karyawan extends Model
 
     /*
     |--------------------------------------------------------------------------
-    | RELATIONS
+    | RELATIONS (Hubungan Antar Tabel)
     |--------------------------------------------------------------------------
     */
+
+    /**
+     * Relasi ke tabel Divisi (Banyak Karyawan dimiliki oleh satu Divisi).
+     */
+    public function divisi(): BelongsTo
+    {
+        return $this->belongsTo(Divisi::class, 'divisi_id');
+    }
 
     /**
      * Relasi ke tabel Users (Satu Karyawan memiliki satu Akun Login).
@@ -137,12 +141,13 @@ class Karyawan extends Model
 
     /*
     |--------------------------------------------------------------------------
-    | ACCESSORS (Virtual Attributes)
+    | ACCESSORS (Atribut Virtual / Format Data)
     |--------------------------------------------------------------------------
+    | Akses di Blade: $karyawan->nama_atribut
     */
 
     /**
-     * Mendapatkan umur saat ini. Akses: $karyawan->age
+     * Mendapatkan umur saat ini secara otomatis. Akses: $karyawan->age
      */
     public function getAgeAttribute()
     {
@@ -150,11 +155,20 @@ class Karyawan extends Model
     }
 
     /**
-     * Format Rupiah untuk Gaji. Akses: $karyawan->formatted_gaji
+     * Menghitung Masa Kerja (Sejak tanggal masuk hingga sekarang).
      */
-    public function getFormattedGajiAttribute()
+    public function getMasaKerjaAttribute()
     {
-        return 'Rp ' . number_format((float) $this->gaji_pokok, 0, ',', '.');
+        if (!$this->tanggal_masuk) return "-";
+        return $this->tanggal_masuk->diff(now())->format('%y Tahun, %m Bulan');
+    }
+
+    /**
+     * Format Rupiah untuk Hourly Rate. Akses: $karyawan->formatted_hourly_rate
+     */
+    public function getFormattedHourlyRateAttribute()
+    {
+        return 'Rp ' . number_format((float) $this->gaji_pokok, 0, ',', '.') . ' /jam';
     }
 
     /**
@@ -166,8 +180,8 @@ class Karyawan extends Model
             return asset('storage/karyawan/foto/' . $this->foto);
         }
         
-        // Jika foto kosong, buat avatar otomatis berdasarkan nama
-        return 'https://ui-avatars.com/api/?name=' . urlencode($this->nama) . '&background=003366&color=fff';
+        // Fallback: Jika foto kosong, buat avatar otomatis berdasarkan nama menggunakan warna Navy CDI (#003366)
+        return 'https://ui-avatars.com/api/?name=' . urlencode($this->nama) . '&background=003366&color=fff&bold=true';
     }
 
     /**
@@ -194,16 +208,17 @@ class Karyawan extends Model
 
     /*
     |--------------------------------------------------------------------------
-    | HELPERS
+    | HELPERS (Fungsi Pembantu Logika Bisnis)
     |--------------------------------------------------------------------------
     */
 
     /**
-     * Cek apakah statusnya adalah magang.
+     * Cek apakah statusnya adalah kelompok magang.
      */
     public function isMagang(): bool
     {
-        return str_contains(strtolower($this->status), 'magang');
+        $statusLower = strtolower($this->status);
+        return str_contains($statusLower, 'magang');
     }
 
     /**
@@ -215,13 +230,21 @@ class Karyawan extends Model
     }
 
     /**
-     * Scope pencarian cepat berdasarkan NIP, NIK, atau Barcode.
-     * Penggunaan: Karyawan::byIdentifier('12345')->first();
+     * Scope pencarian cepat berdasarkan NIP, NIK, atau Barcode Token.
+     * Penggunaan di Controller: Karyawan::byIdentifier('12345')->first();
      */
     public function scopeByIdentifier($query, $identifier)
     {
         return $query->where('nip', $identifier)
                      ->orWhere('nik', $identifier)
                      ->orWhere('barcode_token', $identifier);
+    }
+
+    /**
+     * Scope untuk mengambil karyawan aktif (bisa dikembangkan jika ada kolom is_active)
+     */
+    public function scopeAktif($query)
+    {
+        return $query->whereNotNull('tanggal_masuk');
     }
 }
