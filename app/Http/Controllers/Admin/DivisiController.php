@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * Controller Divisi
  * Mengelola operasional departemen termasuk pengaturan jabatan dan keanggotaan personel.
- * Filenya lengkap mencakup seluruh fungsi CRUD dan manajemen anggota.
+ * Filenya lengkap mencakup seluruh fungsi CRUD, manajemen anggota, dan struktur jabatan JSON.
  */
 class DivisiController extends Controller
 {
@@ -36,15 +36,12 @@ class DivisiController extends Controller
             'kode'           => 'required|string|max:10|unique:divisis,kode',
             'deskripsi'      => 'nullable|string',
             'tugas_utama'    => 'nullable|string',
-            /**
-             * daftar_jabatan disimpan dalam format string dipisahkan koma 
-             * atau JSON (tergantung preferensi implementasi Model)
-             * Contoh input: "Manager, Senior Staff, Junior Staff"
-             */
-            'daftar_jabatan' => 'nullable|string', 
             'warna'          => 'required|string',
             'icon'           => 'nullable|string'
         ]);
+
+        // Inisialisasi daftar_jabatan kosong jika baru dibuat
+        $data['daftar_jabatan'] = [];
 
         Divisi::create($data);
 
@@ -69,7 +66,7 @@ class DivisiController extends Controller
     }
 
     /**
-     * Memperbarui data divisi yang sudah ada.
+     * Memperbarui data dasar divisi (nama, kode, deskripsi, dll).
      */
     public function update(Request $request, Divisi $divisi)
     {
@@ -78,7 +75,6 @@ class DivisiController extends Controller
             'kode'           => 'required|string|max:10|unique:divisis,kode,' . $divisi->id,
             'deskripsi'      => 'nullable|string',
             'tugas_utama'    => 'nullable|string',
-            'daftar_jabatan' => 'nullable|string',
             'warna'          => 'required|string',
             'icon'           => 'nullable|string'
         ]);
@@ -89,9 +85,49 @@ class DivisiController extends Controller
     }
 
     /**
+     * Memperbarui struktur jabatan (Nama, Kuota, & Gaji) dalam format JSON.
+     * Fungsi ini memperbaiki error "Undefined method updateJabatan"
+     */
+    public function updateJabatan(Request $request, $id)
+    {
+        $request->validate([
+            'nama_jabatan'    => 'required|array',
+            'nama_jabatan.*'  => 'required|string',
+            'kuota_jabatan'   => 'required|array',
+            'kuota_jabatan.*' => 'required|integer|min:0',
+            'gaji_jabatan'    => 'nullable|array', // Tambahkan jika ada input gaji di form
+        ]);
+
+        try {
+            $divisi = Divisi::findOrFail($id);
+            
+            $newJabatan = [];
+            foreach ($request->nama_jabatan as $index => $nama) {
+                // Ambil gaji dari input jika ada, jika tidak ambil gaji lama dari database
+                $gajiLama = $divisi->getGajiJabatan($nama);
+                $gajiBaru = isset($request->gaji_jabatan[$index]) 
+                            ? (int) str_replace(['.', ','], '', $request->gaji_jabatan[$index]) 
+                            : $gajiLama;
+
+                $newJabatan[$nama] = [
+                    'kuota' => (int) $request->kuota_jabatan[$index],
+                    'gaji'  => $gajiBaru
+                ];
+            }
+
+            $divisi->update([
+                'daftar_jabatan' => $newJabatan
+            ]);
+
+            return back()->with('success', 'Struktur jabatan divisi ' . $divisi->nama . ' berhasil diperbarui!');
+        } catch (\Exception $e) {
+            return back()->with('error', 'Gagal memperbarui jabatan: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Menghapus data divisi.
-     * Berdasarkan migration onDelete('set null'), data karyawan tidak akan hilang,
-     * hanya kolom divisi_id di tabel karyawans yang akan menjadi NULL secara otomatis.
+     * Berdasarkan migration onDelete('set null'), data karyawan tidak akan hilang.
      */
     public function destroy(Divisi $divisi)
     {
@@ -103,7 +139,6 @@ class DivisiController extends Controller
 
     /**
      * Menambahkan karyawan ke dalam divisi (Assign Personel).
-     * Fungsi ini menghubungkan karyawan ke divisi_id dan memberikan jabatan tertentu.
      */
     public function tambahAnggota(Request $request, $id)
     {
@@ -115,11 +150,19 @@ class DivisiController extends Controller
         try {
             DB::beginTransaction();
 
+            $divisi = Divisi::findOrFail($id);
             $karyawan = Karyawan::findOrFail($request->karyawan_id);
             
+            // Cek sisa kuota sebelum menambahkan
+            if ($divisi->getSisaKuota($request->jabatan) <= 0) {
+                return back()->with('error', 'Kuota untuk jabatan ' . $request->jabatan . ' sudah penuh!');
+            }
+
             $karyawan->update([
-                'divisi_id' => $id,
-                'jabatan'   => $request->jabatan
+                'divisi_id'  => $id,
+                'jabatan'    => $request->jabatan,
+                // Otomatis sinkronkan gaji pokok karyawan dengan standar gaji jabatan di divisi tsb
+                'gaji_pokok' => $divisi->getGajiJabatan($request->jabatan)
             ]);
 
             DB::commit();
@@ -132,7 +175,6 @@ class DivisiController extends Controller
 
     /**
      * Mengeluarkan anggota dari divisi (Unassign Personel).
-     * Mengosongkan divisi_id dan jabatan tanpa menghapus identitas karyawan.
      */
     public function hapusAnggota($karyawan_id)
     {

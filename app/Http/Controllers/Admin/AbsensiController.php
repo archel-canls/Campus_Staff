@@ -33,9 +33,16 @@ class AbsensiController extends Controller
         ]);
 
         try {
-            // Mencari karyawan berdasarkan NIP atau Barcode Token
+            /**
+             * SOLUSI B: Fleksibilitas Pencarian
+             * Mencari karyawan berdasarkan:
+             * 1. NIP murni
+             * 2. Barcode Token apa adanya
+             * 3. Barcode Token dengan prefix 'BC-' (untuk menghandle user registrasi baru)
+             */
             $karyawan = Karyawan::where('nip', $request->nip)
                                 ->orWhere('barcode_token', $request->nip)
+                                ->orWhere('barcode_token', 'BC-' . $request->nip)
                                 ->first();
 
             if (!$karyawan) {

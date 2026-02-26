@@ -3,7 +3,33 @@
 @section('title', 'Detail Divisi ' . $divisi->nama)
 
 @section('content')
-<div class="space-y-10 pb-20" x-data="{ showMemberModal: false, showJobModal: false }">
+<div class="space-y-10 pb-20" x-data="{ 
+    showMemberModal: false, 
+    showJobModal: false,
+    searchQuery: '',
+    filterJabatan: '',
+    // Data karyawan diparsing ke JSON untuk Alpine.js
+    members: {{ $divisi->karyawans->map(function($k) {
+        return [
+            'id' => $k->id,
+            'nama' => $k->nama,
+            'nip' => $k->nip,
+            'jabatan' => $k->jabatan ?? 'General Staff',
+            'initial' => strtoupper(substr($k->nama, 0, 1)),
+            'hapus_url' => route('divisi.hapus-anggota', $k->id)
+        ];
+    })->toJson() }},
+    
+    // Fungsi Filter Otomatis
+    get filteredMembers() {
+        return this.members.filter(m => {
+            const matchesSearch = m.nama.toLowerCase().includes(this.searchQuery.toLowerCase()) || 
+                                  m.nip.toLowerCase().includes(this.searchQuery.toLowerCase());
+            const matchesJabatan = this.filterJabatan === '' || m.jabatan === this.filterJabatan;
+            return matchesSearch && matchesJabatan;
+        });
+    }
+}">
     {{-- Header --}}
     <div class="flex flex-col md:flex-row md:items-center gap-8">
         <a href="{{ route('divisi.index') }}" class="w-16 h-16 bg-white border-2 border-slate-100 rounded-[1.5rem] flex items-center justify-center text-cdi hover:bg-cdi hover:text-white transition-all shadow-sm">
@@ -42,11 +68,14 @@
                 </div>
                 
                 <div class="space-y-3">
-                    @forelse($divisi->daftar_jabatan ?? [] as $jabatan => $kuota)
+                    @forelse($divisi->daftar_jabatan ?? [] as $jabatan => $data)
                     <div class="flex justify-between items-center bg-white/5 p-4 rounded-2xl border border-white/10">
                         <span class="text-[10px] font-black uppercase tracking-tight">{{ $jabatan }}</span>
                         <div class="text-right">
-                            <span class="text-[10px] font-black text-cdi-orange">{{ $divisi->karyawans()->where('jabatan', $jabatan)->count() }} / {{ $kuota }}</span>
+                            <span class="text-[10px] font-black text-cdi-orange">
+                                {{ $divisi->karyawans()->where('jabatan', $jabatan)->count() }} / 
+                                {{ is_array($data) ? ($data['kuota'] ?? 0) : $data }}
+                            </span>
                             <p class="text-[8px] uppercase opacity-50 tracking-tighter">Personel</p>
                         </div>
                     </div>
@@ -59,10 +88,24 @@
 
         {{-- Sisi Kanan: Daftar Anggota --}}
         <div class="lg:col-span-2 space-y-6">
-            <div class="flex items-center justify-between px-4">
-                <h4 class="text-xl font-black text-cdi uppercase italic">Daftar <span class="text-slate-300">Anggota</span></h4>
-                <button @click="showMemberModal = true" class="bg-slate-900 text-white px-6 py-4 rounded-2xl font-black uppercase italic text-[10px] tracking-widest hover:bg-cdi-orange transition-all shadow-xl">
-                    <i class="fas fa-user-plus mr-2"></i> Tambah Anggota
+            {{-- Toolbar: Search & Filter --}}
+            <div class="bg-white p-6 rounded-[2.5rem] border-2 border-slate-100 shadow-sm flex flex-col md:flex-row gap-4 items-center">
+                <div class="relative flex-1 w-full">
+                    <i class="fas fa-search absolute left-6 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                    <input type="text" x-model="searchQuery" placeholder="CARI NAMA ATAU NIP..." 
+                        class="w-full bg-slate-50 border-none rounded-2xl pl-14 pr-6 py-4 text-[10px] font-black tracking-widest uppercase focus:ring-2 focus:ring-cdi transition-all">
+                </div>
+                <div class="w-full md:w-48">
+                    <select x-model="filterJabatan" 
+                        class="w-full bg-slate-50 border-none rounded-2xl px-6 py-4 text-[10px] font-black tracking-widest uppercase focus:ring-2 focus:ring-cdi appearance-none cursor-pointer">
+                        <option value="">SEMUA JABATAN</option>
+                        @foreach($divisi->daftar_jabatan ?? [] as $jab => $data)
+                            <option value="{{ $jab }}">{{ strtoupper($jab) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <button @click="showMemberModal = true" class="w-full md:w-auto bg-slate-900 text-white px-8 py-4 rounded-2xl font-black uppercase italic text-[10px] tracking-widest hover:bg-cdi-orange transition-all shadow-lg whitespace-nowrap">
+                    <i class="fas fa-user-plus mr-2"></i> Tambah
                 </button>
             </div>
 
@@ -76,36 +119,43 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y-2 divide-slate-50">
-                        @forelse($divisi->karyawans as $k)
-                        <tr class="group hover:bg-slate-50/50 transition-all">
-                            <td class="px-10 py-8">
-                                <div class="flex items-center gap-5">
-                                    <div class="w-12 h-12 bg-cdi rounded-2xl flex items-center justify-center font-black text-white text-sm shadow-md">
-                                        {{ strtoupper(substr($k->nama, 0, 1)) }}
+                        {{-- Render via Alpine.js --}}
+                        <template x-for="k in filteredMembers" :key="k.id">
+                            <tr class="group hover:bg-slate-50/50 transition-all">
+                                <td class="px-10 py-8">
+                                    <div class="flex items-center gap-5">
+                                        <div class="w-12 h-12 bg-cdi rounded-2xl flex items-center justify-center font-black text-white text-sm shadow-md" x-text="k.initial"></div>
+                                        <div>
+                                            <p class="font-black text-cdi uppercase italic text-[13px] tracking-tight group-hover:text-cdi-orange transition-colors" x-text="k.nama"></p>
+                                            <p class="text-[9px] font-bold text-slate-300 uppercase tracking-widest mt-1" x-text="'NIP. ' + k.nip"></p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p class="font-black text-cdi uppercase italic text-[13px] tracking-tight group-hover:text-cdi-orange transition-colors">{{ $k->nama }}</p>
-                                        <p class="text-[9px] font-bold text-slate-300 uppercase tracking-widest mt-1">NIP. {{ $k->nip }}</p>
+                                </td>
+                                <td class="px-10 py-8 text-center">
+                                    <span class="px-4 py-2 bg-slate-900 text-white text-[9px] font-black uppercase italic rounded-xl tracking-widest shadow-lg" x-text="k.jabatan"></span>
+                                </td>
+                                <td class="px-10 py-8 text-right">
+                                    <form :action="k.hapus_url" method="POST">
+                                        @csrf
+                                        <button type="submit" onclick="return confirm('Keluarkan dari divisi?')" class="w-10 h-10 bg-slate-100 text-slate-300 rounded-xl hover:bg-red-500 hover:text-white transition-all">
+                                            <i class="fas fa-user-minus text-[10px]"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                        </template>
+
+                        {{-- Empty State Alpine --}}
+                        <template x-if="filteredMembers.length === 0">
+                            <tr>
+                                <td colspan="3" class="px-10 py-20 text-center">
+                                    <div class="flex flex-col items-center opacity-30">
+                                        <i class="fas fa-user-slash text-4xl mb-4"></i>
+                                        <p class="text-[10px] font-black uppercase tracking-[0.5em]">Personel Tidak Ditemukan</p>
                                     </div>
-                                </div>
-                            </td>
-                            <td class="px-10 py-8 text-center">
-                                <span class="px-4 py-2 bg-slate-900 text-white text-[9px] font-black uppercase italic rounded-xl tracking-widest shadow-lg">
-                                    {{ $k->jabatan ?? 'General Staff' }}
-                                </span>
-                            </td>
-                            <td class="px-10 py-8 text-right">
-                                <form action="{{ route('divisi.hapus-anggota', $k->id) }}" method="POST">
-                                    @csrf
-                                    <button type="submit" onclick="return confirm('Keluarkan dari divisi?')" class="w-10 h-10 bg-slate-100 text-slate-300 rounded-xl hover:bg-red-500 hover:text-white transition-all">
-                                        <i class="fas fa-user-minus text-[10px]"></i>
-                                    </button>
-                                </form>
-                            </td>
-                        </tr>
-                        @empty
-                        <tr><td colspan="3" class="px-10 py-20 text-center text-slate-300 text-[10px] font-black uppercase tracking-[0.5em]">Belum ada anggota</td></tr>
-                        @endforelse
+                                </td>
+                            </tr>
+                        </template>
                     </tbody>
                 </table>
             </div>
@@ -113,13 +163,16 @@
     </div>
 
     {{-- MODAL KELOLA JABATAN & KUOTA --}}
-    <div x-show="showJobModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm" x-cloak>
+    <div x-show="showJobModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm" x-cloak x-transition>
         <div class="bg-white w-full max-w-xl rounded-[3rem] shadow-2xl p-12 overflow-hidden" 
              x-data="{ 
                 rows: [
                     @if($divisi->daftar_jabatan)
-                        @foreach($divisi->daftar_jabatan as $j => $k)
-                            { nama: '{{ $j }}', kuota: '{{ $k }}' },
+                        @foreach($divisi->daftar_jabatan as $j => $data)
+                            { 
+                                nama: '{{ $j }}', 
+                                kuota: '{{ is_array($data) ? ($data['kuota'] ?? 0) : $data }}' 
+                            },
                         @endforeach
                     @else
                         { nama: '', kuota: 1 }
@@ -158,7 +211,7 @@
     </div>
 
     {{-- MODAL TAMBAH ANGGOTA --}}
-    <div x-show="showMemberModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm" x-cloak>
+    <div x-show="showMemberModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm" x-cloak x-transition>
         <div class="bg-white w-full max-w-md rounded-[3rem] shadow-2xl p-12" @click.away="showMemberModal = false">
             <h3 class="text-2xl font-black text-cdi uppercase italic mb-8">Tambah <span class="text-cdi-orange">Personel</span></h3>
             
@@ -168,7 +221,7 @@
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Pilih Karyawan</label>
                     <select name="karyawan_id" required class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-xs font-black outline-none appearance-none focus:border-cdi">
                         <option value="">-- PILIH --</option>
-                        @foreach($karyawanTersedia as $kt)
+                        @foreach(\App\Models\Karyawan::whereNull('divisi_id')->orderBy('nama')->get() as $kt)
                             <option value="{{ $kt->id }}">{{ $kt->nama }}</option>
                         @endforeach
                     </select>
@@ -177,8 +230,10 @@
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Pilih Jabatan (Kuota Tersedia)</label>
                     <select name="jabatan" required class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-xs font-black outline-none appearance-none focus:border-cdi">
                         <option value="">-- PILIH JABATAN --</option>
-                        @foreach($divisi->daftar_jabatan ?? [] as $jab => $kuota)
-                            @php $sisa = $divisi->getSisaKuota($jab); @endphp
+                        @foreach($divisi->daftar_jabatan ?? [] as $jab => $data)
+                            @php 
+                                $sisa = $divisi->getSisaKuota($jab); 
+                            @endphp
                             <option value="{{ $jab }}" {{ $sisa <= 0 ? 'disabled' : '' }}>
                                 {{ strtoupper($jab) }} (Sisa: {{ $sisa }})
                             </option>

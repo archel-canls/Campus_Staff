@@ -44,18 +44,39 @@
         </div>
     </div>
 
-    {{-- SEARCH & FILTER --}}
-    <div class="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex flex-wrap gap-4 items-center">
+    {{-- SEARCH & FILTER BAR --}}
+    <div class="bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm flex flex-wrap gap-4 items-center">
+        {{-- Search Input --}}
         <div class="relative flex-1 min-w-[300px]">
             <i class="fas fa-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-300"></i>
-            <input type="text" id="searchInput" placeholder="CARI NAMA ATAU NIP..." class="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-[11px] font-bold text-cdi outline-none focus:ring-2 focus:ring-cdi-orange/20 transition-all uppercase">
+            <input type="text" id="searchInput" placeholder="CARI NAMA, NIP, ATAU INSTANSI..." 
+                class="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-4 text-[11px] font-bold text-cdi outline-none focus:ring-2 focus:ring-cdi-orange/20 transition-all uppercase">
         </div>
-        <select id="filterDivisi" class="bg-slate-50 border-none rounded-2xl py-4 px-6 text-[11px] font-bold text-cdi outline-none cursor-pointer uppercase">
-            <option value="">Semua Divisi</option>
-            @foreach(\App\Models\Divisi::all() as $div)
-                <option value="{{ $div->nama }}">{{ $div->nama }}</option>
-            @endforeach
-        </select>
+
+        {{-- Filter Divisi --}}
+        <div class="relative min-w-[180px]">
+            <select id="filterDivisi" class="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 text-[11px] font-bold text-cdi outline-none cursor-pointer uppercase appearance-none focus:ring-2 focus:ring-cdi-orange/20">
+                <option value="">Semua Divisi</option>
+                @foreach(\App\Models\Divisi::orderBy('nama')->get() as $div)
+                    <option value="{{ $div->nama }}">{{ $div->nama }}</option>
+                @endforeach
+            </select>
+            <i class="fas fa-chevron-down absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[10px]"></i>
+        </div>
+
+        {{-- Filter Jabatan --}}
+        <div class="relative min-w-[180px]">
+            <select id="filterJabatan" class="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 text-[11px] font-bold text-cdi outline-none cursor-pointer uppercase appearance-none focus:ring-2 focus:ring-cdi-orange/20">
+                <option value="">Semua Jabatan</option>
+                @php
+                    $jabatans = $karyawans->pluck('jabatan')->unique()->sort();
+                @endphp
+                @foreach($jabatans as $jab)
+                    <option value="{{ $jab }}">{{ $jab }}</option>
+                @endforeach
+            </select>
+            <i class="fas fa-chevron-down absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[10px]"></i>
+        </div>
     </div>
 
     @if(session('success'))
@@ -77,9 +98,11 @@
                         <th class="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-400 text-center">Aksi Cepat</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-50">
+                <tbody class="divide-y divide-slate-50" id="tableBody">
                     @forelse($karyawans as $k)
-                    <tr class="hover:bg-slate-50/80 transition-all group table-row-item" data-divisi="{{ $k->divisi->nama ?? 'N/A' }}">
+                    <tr class="hover:bg-slate-50/80 transition-all group table-row-item" 
+                        data-divisi="{{ $k->divisi->nama ?? 'N/A' }}"
+                        data-jabatan="{{ $k->jabatan ?? 'N/A' }}">
                         <td class="px-8 py-6">
                             <div class="flex items-center space-x-5">
                                 <div class="relative">
@@ -93,8 +116,8 @@
                                     <span class="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white rounded-full" title="Aktif"></span>
                                 </div>
                                 <div>
-                                    <p class="font-black text-cdi uppercase italic text-sm tracking-tight group-hover:text-cdi-orange transition-colors">{{ $k->nama }}</p>
-                                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-0.5">{{ $k->nip }}</p>
+                                    <p class="font-black text-cdi uppercase italic text-sm tracking-tight group-hover:text-cdi-orange transition-colors search-target">{{ $k->nama }}</p>
+                                    <p class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-0.5 search-target">{{ $k->nip }}</p>
                                 </div>
                             </div>
                         </td>
@@ -121,7 +144,7 @@
                                     <div class="w-32 h-1 bg-slate-100 rounded-full overflow-hidden">
                                         <div class="bg-cdi-orange h-full rounded-full" style="width: 100%"></div>
                                     </div>
-                                    <span class="text-[8px] font-bold text-slate-400 uppercase italic">{{ $k->instansi ?? 'Umum' }}</span>
+                                    <span class="text-[8px] font-bold text-slate-400 uppercase italic search-target">{{ $k->instansi ?? 'Umum' }}</span>
                                 </div>
                             @endif
                         </td>
@@ -143,7 +166,7 @@
                         </td>
                     </tr>
                     @empty
-                    <tr>
+                    <tr id="emptyState">
                         <td colspan="4" class="px-8 py-32 text-center">
                             <div class="flex flex-col items-center">
                                 <div class="w-24 h-24 bg-slate-50 rounded-[2.5rem] flex items-center justify-center text-slate-200 text-4xl mb-6 border border-slate-100 shadow-inner">
@@ -151,13 +174,22 @@
                                 </div>
                                 <h4 class="font-black text-cdi italic uppercase tracking-tighter text-xl">Database Kosong</h4>
                                 <p class="text-xs text-slate-400 font-bold uppercase tracking-[0.2em] mt-2">Belum ada personel yang terdaftar di sistem</p>
-                                <a href="{{ route('manajemen-karyawan.create') }}" class="mt-8 text-cdi-orange font-black text-[10px] uppercase italic tracking-widest hover:underline">
-                                    Mulai Input Data Pertama <i class="fas fa-arrow-right ml-2"></i>
-                                </a>
                             </div>
                         </td>
                     </tr>
                     @endforelse
+                    {{-- Row Not Found (Hidden by default) --}}
+                    <tr id="noResults" class="hidden">
+                        <td colspan="4" class="px-8 py-32 text-center">
+                            <div class="flex flex-col items-center">
+                                <div class="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center text-slate-200 text-2xl mb-4">
+                                    <i class="fas fa-search"></i>
+                                </div>
+                                <h4 class="font-black text-cdi italic uppercase tracking-tighter text-lg">Tidak Ada Hasil</h4>
+                                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1">Coba sesuaikan kata kunci atau filter Anda</p>
+                            </div>
+                        </td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -165,28 +197,59 @@
 </div>
 
 <script>
-    // Live Search & Filter Functionality
-    const searchInput = document.getElementById('searchInput');
-    const filterDivisi = document.getElementById('filterDivisi');
-    const rows = document.querySelectorAll('.table-row-item');
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchInput = document.getElementById('searchInput');
+        const filterDivisi = document.getElementById('filterDivisi');
+        const filterJabatan = document.getElementById('filterJabatan');
+        const rows = document.querySelectorAll('.table-row-item');
+        const noResults = document.getElementById('noResults');
 
-    function performFilter() {
-        const searchText = searchInput.value.toUpperCase();
-        const selectedDivisi = filterDivisi.value.toUpperCase();
+        function performFilter() {
+            const searchText = searchInput.value.toLowerCase().trim();
+            const selectedDivisi = filterDivisi.value.toLowerCase();
+            const selectedJabatan = filterJabatan.value.toLowerCase();
+            let visibleCount = 0;
 
-        rows.forEach(row => {
-            const rowText = row.innerText.toUpperCase();
-            const rowDivisi = row.getAttribute('data-divisi').toUpperCase();
-            
-            const matchesSearch = rowText.includes(searchText);
-            const matchesDivisi = selectedDivisi === "" || rowDivisi === selectedDivisi;
+            rows.forEach(row => {
+                // Ambil data teks dari kolom info personel (Nama, NIP, Instansi)
+                const searchableText = Array.from(row.querySelectorAll('.search-target'))
+                                            .map(el => el.textContent.toLowerCase())
+                                            .join(' ');
+                
+                const rowDivisi = row.getAttribute('data-divisi').toLowerCase();
+                const rowJabatan = row.getAttribute('data-jabatan').toLowerCase();
+                
+                // Logika Filter:
+                // 1. Cek Pencarian (Nama/NIP/Instansi)
+                const matchesSearch = searchableText.includes(searchText);
+                
+                // 2. Cek Filter Divisi
+                const matchesDivisi = selectedDivisi === "" || rowDivisi === selectedDivisi;
+                
+                // 3. Cek Filter Jabatan
+                const matchesJabatan = selectedJabatan === "" || rowJabatan === selectedJabatan;
 
-            row.style.display = (matchesSearch && matchesDivisi) ? '' : 'none';
-        });
-    }
+                if (matchesSearch && matchesDivisi && matchesJabatan) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                }
+            });
 
-    searchInput.addEventListener('keyup', performFilter);
-    filterDivisi.addEventListener('change', performFilter);
+            // Tampilkan state "Tidak Ada Hasil" jika tidak ada row yang cocok
+            if (visibleCount === 0 && rows.length > 0) {
+                noResults.classList.remove('hidden');
+            } else {
+                noResults.classList.add('hidden');
+            }
+        }
+
+        // Event Listeners
+        searchInput.addEventListener('input', performFilter);
+        filterDivisi.addEventListener('change', performFilter);
+        filterJabatan.addEventListener('change', performFilter);
+    });
 </script>
 
 <style>
@@ -203,6 +266,11 @@
     }
     .overflow-x-auto::-webkit-scrollbar-thumb:hover {
         background: #cbd5e1;
+    } 
+
+    /* Smooth transition for table rows */
+    .table-row-item {
+        transition: background-color 0.2s ease;
     }
 </style>
 @endsection

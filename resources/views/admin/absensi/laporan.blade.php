@@ -6,48 +6,83 @@
 @section('content')
 <div class="space-y-8 pb-20" x-data="{ showLiburModal: false }">
     {{-- FILTER & ACTION CARD --}}
-    <div class="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-6 print:hidden">
-        <div class="flex flex-wrap items-center gap-4">
-            <form action="{{ route('absensi.laporan') }}" method="GET" class="flex flex-wrap items-center gap-4">
-                <div class="flex items-center bg-slate-50 rounded-2xl px-4 py-1 border border-slate-100">
-                    <i class="fas fa-calendar-alt text-cdi-orange mr-2"></i>
-                    <select name="bulan" class="bg-transparent border-none py-3 font-black text-[11px] text-cdi outline-none uppercase cursor-pointer">
-                        @foreach(range(1, 12) as $m)
-                            <option value="{{ $m }}" {{ request('bulan', date('m')) == $m ? 'selected' : '' }}>
-                                {{ \Carbon\Carbon::create()->month($m)->translatedFormat('F') }}
-                            </option>
-                        @endforeach
-                    </select>
-                </div>
-                <div class="flex items-center bg-slate-50 rounded-2xl px-4 py-1 border border-slate-100">
-                    <i class="fas fa-layer-group text-cdi-orange mr-2"></i>
-                    <select name="tahun" class="bg-transparent border-none py-3 font-black text-[11px] text-cdi outline-none uppercase cursor-pointer">
-                        @php $yNow = date('Y'); @endphp
-                        @for($y = $yNow; $y >= $yNow - 2; $y--)
-                            <option value="{{ $y }}" {{ request('tahun', $yNow) == $y ? 'selected' : '' }}>{{ $y }}</option>
-                        @endfor
-                    </select>
-                </div>
-                <button type="submit" class="bg-cdi text-white px-8 py-4 rounded-2xl font-black uppercase italic text-[10px] hover:bg-cdi-orange transition-all shadow-lg shadow-blue-900/10">
-                    TAMPILKAN LAPORAN
-                </button>
-            </form>
+    <div class="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 flex flex-col gap-8 print:hidden">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div class="flex flex-wrap items-center gap-4">
+                {{-- Form Filter Bulan & Tahun (Server Side) --}}
+                <form action="{{ route('absensi.laporan') }}" method="GET" class="flex flex-wrap items-center gap-4">
+                    <div class="flex items-center bg-slate-50 rounded-2xl px-4 py-1 border border-slate-100">
+                        <i class="fas fa-calendar-alt text-cdi-orange mr-2"></i>
+                        <select name="bulan" class="bg-transparent border-none py-3 font-black text-[11px] text-cdi outline-none uppercase cursor-pointer">
+                            @foreach(range(1, 12) as $m)
+                                <option value="{{ $m }}" {{ request('bulan', date('m')) == $m ? 'selected' : '' }}>
+                                    {{ \Carbon\Carbon::create()->month($m)->translatedFormat('F') }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="flex items-center bg-slate-50 rounded-2xl px-4 py-1 border border-slate-100">
+                        <i class="fas fa-layer-group text-cdi-orange mr-2"></i>
+                        <select name="tahun" class="bg-transparent border-none py-3 font-black text-[11px] text-cdi outline-none uppercase cursor-pointer">
+                            @php $yNow = date('Y'); @endphp
+                            @for($y = $yNow; $y >= $yNow - 2; $y--)
+                                <option value="{{ $y }}" {{ request('tahun', $yNow) == $y ? 'selected' : '' }}>{{ $y }}</option>
+                            @endfor
+                        </select>
+                    </div>
+                    <button type="submit" class="bg-cdi text-white px-8 py-4 rounded-2xl font-black uppercase italic text-[10px] hover:bg-cdi-orange transition-all shadow-lg shadow-blue-900/10">
+                        GANTI PERIODE
+                    </button>
+                </form>
 
-            {{-- TOMBOL ATUR HARI LIBUR --}}
-            <button @click="showLiburModal = true" class="bg-red-50 text-red-600 px-6 py-4 rounded-2xl font-black uppercase italic text-[10px] border border-red-100 hover:bg-red-600 hover:text-white transition-all">
-                <i class="fas fa-umbrella-beach mr-2"></i> Atur Hari Libur
+                {{-- TOMBOL ATUR HARI LIBUR --}}
+                <button @click="showLiburModal = true" class="bg-red-50 text-red-600 px-6 py-4 rounded-2xl font-black uppercase italic text-[10px] border border-red-100 hover:bg-red-600 hover:text-white transition-all">
+                    <i class="fas fa-umbrella-beach mr-2"></i> Atur Hari Libur
+                </button>
+            </div>
+
+            <button onclick="window.print()" class="text-cdi font-black text-[10px] uppercase italic hover:text-cdi-orange transition-colors">
+                <i class="fas fa-file-pdf mr-2"></i> Cetak Semua (A4)
             </button>
         </div>
 
-        <button onclick="window.print()" class="text-cdi font-black text-[10px] uppercase italic hover:text-cdi-orange transition-colors">
-            <i class="fas fa-file-pdf mr-2"></i> Cetak Semua (A4)
-        </button>
+        {{-- LIVE FILTER SECTION (Client Side) --}}
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-slate-50 pt-6">
+            <div class="relative group">
+                <i class="fas fa-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-cdi-orange transition-colors"></i>
+                <input type="text" id="searchInput" placeholder="CARI NAMA ATAU NIP..." 
+                    class="w-full bg-slate-50 border border-slate-100 rounded-2xl pl-12 pr-4 py-4 text-[11px] font-bold uppercase tracking-widest focus:ring-2 focus:ring-cdi-orange/20 outline-none transition-all">
+            </div>
+
+            <div class="relative">
+                <select id="filterDivisi" class="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 text-[11px] font-bold uppercase tracking-widest outline-none appearance-none cursor-pointer">
+                    <option value="">SEMUA DIVISI</option>
+                    @foreach(\App\Models\Divisi::all() as $div)
+                        <option value="{{ $div->nama }}">{{ $div->nama }}</option>
+                    @endforeach
+                </select>
+                <i class="fas fa-chevron-down absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
+            </div>
+
+            <div class="relative">
+                <select id="filterJabatan" class="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 text-[11px] font-bold uppercase tracking-widest outline-none appearance-none cursor-pointer">
+                    <option value="">SEMUA JABATAN</option>
+                    @php
+                        $jabatans = \App\Models\Karyawan::whereNotNull('jabatan')->distinct()->pluck('jabatan');
+                    @endphp
+                    @foreach($jabatans as $jab)
+                        <option value="{{ $jab }}">{{ $jab }}</option>
+                    @endforeach
+                </select>
+                <i class="fas fa-chevron-down absolute right-5 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
+            </div>
+        </div>
     </div>
 
     {{-- REKAPITULASI UTAMA --}}
     <div class="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden">
         <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
+            <table class="w-full text-left border-collapse" id="reportTable">
                 <thead>
                     <tr class="bg-slate-50 border-b border-slate-100">
                         <th class="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Data Personel</th>
@@ -107,10 +142,14 @@
                         $skor = ($hariKerjaBerlalu > 0) ? round(($hadirCount / $hariKerjaBerlalu) * 100) : 100;
                         $color = $skor >= 80 ? 'green' : ($skor >= 50 ? 'orange' : 'red');
                     @endphp
-                    <tr class="hover:bg-slate-50/50 transition-all group">
+                    {{-- Row Utama dengan data-attribute untuk filter --}}
+                    <tr class="hover:bg-slate-50/50 transition-all group person-row" 
+                        data-nama="{{ strtoupper($row->nama) }}" 
+                        data-nip="{{ $row->nip }}" 
+                        data-divisi="{{ $row->divisi->nama ?? '' }}" 
+                        data-jabatan="{{ $row->jabatan ?? '' }}">
                         <td class="px-8 py-6">
                             <p class="font-black text-cdi uppercase italic text-sm leading-none">{{ $row->nama }}</p>
-                            {{-- BAGIAN YANG DIUBAH: Mengambil nama dari relasi divisi --}}
                             <p class="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-tighter">
                                 {{ $row->nip }} • {{ $row->divisi->nama ?? 'Tanpa Divisi' }}
                             </p>
@@ -135,7 +174,7 @@
                             <div class="flex flex-col items-center gap-1.5">
                                 <span class="text-[10px] font-black uppercase italic text-{{ $color }}-600">{{ $skor }}% Rating</span>
                                 <div class="w-24 bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                                   <div class="bg-{{ $color }}-500 h-full" style="width: {{ $skor }}%;"></div>
+                                    <div class="bg-{{ $color }}-500 h-full" style="width: {{ $skor }}%;"></div>
                                 </div>
                             </div>
                         </td>
@@ -146,7 +185,7 @@
                         </td>
                     </tr>
 
-                    {{-- DETAIL HARIAN --}}
+                    {{-- DETAIL HARIAN (Selalu sembunyi saat filter mencari) --}}
                     <tr id="detail-{{ $row->id }}" class="hidden detail-row bg-slate-50/30">
                         <td colspan="4" class="px-8 py-8">
                             <div class="bg-white rounded-[2rem] border border-slate-100 shadow-inner overflow-hidden p-6">
@@ -208,6 +247,14 @@
                         </td>
                     </tr>
                     @endforeach
+
+                    {{-- No Results State --}}
+                    <tr id="noResultsRow" class="hidden">
+                        <td colspan="4" class="px-8 py-20 text-center">
+                            <i class="fas fa-user-slash text-4xl text-slate-200 mb-4 block"></i>
+                            <p class="text-slate-400 font-black uppercase italic text-[11px] tracking-widest">Tidak ada personel yang cocok dengan pencarian Anda</p>
+                        </td>
+                    </tr>
                 </tbody>
             </table>
         </div>
@@ -262,6 +309,48 @@
 </div>
 
 <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchInput = document.getElementById('searchInput');
+        const filterDivisi = document.getElementById('filterDivisi');
+        const filterJabatan = document.getElementById('filterJabatan');
+        const rows = document.querySelectorAll('.person-row');
+        const noResultsRow = document.getElementById('noResultsRow');
+
+        function performFilter() {
+            const searchTerm = searchInput.value.toUpperCase();
+            const selectedDivisi = filterDivisi.value;
+            const selectedJabatan = filterJabatan.value;
+            let visibleCount = 0;
+
+            rows.forEach(row => {
+                const nama = row.getAttribute('data-nama');
+                const nip = row.getAttribute('data-nip');
+                const divisi = row.getAttribute('data-divisi');
+                const jabatan = row.getAttribute('data-jabatan');
+
+                const matchesSearch = nama.includes(searchTerm) || nip.includes(searchTerm);
+                const matchesDivisi = selectedDivisi === "" || divisi === selectedDivisi;
+                const matchesJabatan = selectedJabatan === "" || jabatan === selectedJabatan;
+
+                if (matchesSearch && matchesDivisi && matchesJabatan) {
+                    row.style.display = '';
+                    visibleCount++;
+                } else {
+                    row.style.display = 'none';
+                    // Sembunyikan detail row jika baris utamanya disembunyikan
+                    const detailId = row.querySelector('button').getAttribute('onclick').match(/'([^']+)'/)[1];
+                    document.getElementById(detailId).classList.add('hidden');
+                }
+            });
+
+            noResultsRow.style.display = visibleCount === 0 ? '' : 'none';
+        }
+
+        searchInput.addEventListener('input', performFilter);
+        filterDivisi.addEventListener('change', performFilter);
+        filterJabatan.addEventListener('change', performFilter);
+    });
+
     function toggleDetail(id) {
         const row = document.getElementById(id);
         if (row) row.classList.toggle('hidden');

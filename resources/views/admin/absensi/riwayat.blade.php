@@ -4,14 +4,51 @@
 @section('page_title', 'Laporan Kehadiran Harian')
 
 @section('content')
-<div x-data="{ tab: 'absensi' }" class="space-y-8 pb-20">
+@php
+    $today = \Carbon\Carbon::today();
+    $divisis = \App\Models\Divisi::all();
+    
+    // Ambil data karyawan dengan relasi absensi hari ini dan perizinan aktif
+    $allKaryawan = \App\Models\Karyawan::with(['divisi', 'absensis' => function($q) use ($today) {
+        $q->whereDate('jam_masuk', $today);
+    }, 'perizinans' => function($q) use ($today) {
+        $q->where('status', 'disetujui')
+          ->whereDate('tanggal_mulai', '<=', $today)
+          ->whereDate('tanggal_selesai', '>=', $today);
+    }])->get();
+
+    // Data Perizinan Pending
+    $perizinanPending = \App\Models\Perizinan::where('status', 'pending')->with(['karyawan.divisi'])->latest()->get();
+    $pendingCount = $perizinanPending->count();
+
+    // Riwayat Perizinan
+    $historyPerizinan = \App\Models\Perizinan::where('status', '!=', 'pending')->with(['karyawan.divisi'])->latest()->take(10)->get();
+@endphp
+
+<div x-data="{ 
+    tab: 'absensi',
+    searchQuery: '',
+    filterDivisi: '',
+    filterJabatan: '',
+    
+    // Fungsi pencarian & filter global
+    isMatch(nama, nip, divisiId, jabatan) {
+        const matchSearch = nama.toLowerCase().includes(this.searchQuery.toLowerCase()) || 
+                          nip.toLowerCase().includes(this.searchQuery.toLowerCase());
+        const matchDivisi = this.filterDivisi === '' || divisiId == this.filterDivisi;
+        const matchJabatan = this.filterJabatan === '' || jabatan === this.filterJabatan;
+        
+        return matchSearch && matchDivisi && matchJabatan;
+    }
+}" class="space-y-8 pb-20">
+
     {{-- HEADER SECTION --}}
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
         <div>
             <h3 class="text-3xl font-black italic uppercase tracking-tighter text-cdi">Log <span class="text-cdi-orange">Kehadiran</span></h3>
             <p class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">
                 <i class="fas fa-calendar-alt mr-1 text-cdi-orange"></i>
-                Data hari ini: {{ \Carbon\Carbon::now()->translatedFormat('d F Y') }}
+                Data hari ini: {{ $today->translatedFormat('d F Y') }}
             </p>
         </div>
         
@@ -26,9 +63,6 @@
                 :class="tab === 'perizinan' ? 'bg-white shadow-sm text-cdi' : 'text-slate-500'" 
                 class="px-6 py-2 rounded-xl font-black uppercase italic text-[10px] transition-all relative">
                 Persetujuan Izin
-                @php 
-                    $pendingCount = \App\Models\Perizinan::where('status', 'pending')->count(); 
-                @endphp
                 @if($pendingCount > 0)
                     <span class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[8px] flex items-center justify-center rounded-full animate-bounce border-2 border-white">
                         {{ $pendingCount }}
@@ -44,6 +78,37 @@
         </div>
     </div>
 
+    {{-- FILTER & SEARCH BAR --}}
+    <div class="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 print:hidden">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {{-- Search --}}
+            <div class="relative">
+                <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                <input type="text" x-model="searchQuery" placeholder="Cari Nama atau NIP..." 
+                    class="w-full pl-10 pr-4 py-3 bg-slate-50 border-none rounded-2xl text-[10px] font-bold uppercase tracking-widest focus:ring-2 focus:ring-cdi transition-all">
+            </div>
+
+            {{-- Filter Divisi --}}
+            <select x-model="filterDivisi" class="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-[10px] font-bold uppercase tracking-widest focus:ring-2 focus:ring-cdi transition-all">
+                <option value="">Semua Divisi</option>
+                @foreach($divisis as $divisi)
+                    <option value="{{ $divisi->id }}">{{ $divisi->nama }}</option>
+                @endforeach
+            </select>
+
+            {{-- Filter Jabatan --}}
+            <select x-model="filterJabatan" class="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-[10px] font-bold uppercase tracking-widest focus:ring-2 focus:ring-cdi transition-all">
+                <option value="">Semua Jabatan</option>
+                @php
+                    $jabatans = \App\Models\Karyawan::distinct()->pluck('jabatan');
+                @endphp
+                @foreach($jabatans as $j)
+                    <option value="{{ $j }}">{{ $j }}</option>
+                @endforeach
+            </select>
+        </div>
+    </div>
+
     {{-- FLASH MESSAGES --}}
     @if(session('success'))
         <div class="bg-green-50 border border-green-100 text-green-600 px-6 py-4 rounded-2xl text-[10px] font-black uppercase italic animate-pulse">
@@ -51,7 +116,7 @@
         </div>
     @endif
 
-    {{-- TAB 1: DAFTAR HADIR (SEMUA KARYAWAN) --}}
+    {{-- TAB 1: DAFTAR HADIR --}}
     <div x-show="tab === 'absensi'" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0 translate-y-4" x-transition:enter-end="opacity-100 translate-y-0">
         <div class="bg-white rounded-[3rem] shadow-sm border border-slate-100 overflow-hidden">
             <div class="overflow-x-auto">
@@ -65,17 +130,6 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
-                        @php
-                            $today = \Carbon\Carbon::today();
-                            $allKaryawan = \App\Models\Karyawan::with(['absensis' => function($q) use ($today) {
-                                $q->whereDate('jam_masuk', $today);
-                            }, 'perizinans' => function($q) use ($today) {
-                                $q->where('status', 'disetujui')
-                                  ->whereDate('tanggal_mulai', '<=', $today)
-                                  ->whereDate('tanggal_selesai', '>=', $today);
-                            }])->get();
-                        @endphp
-
                         @forelse($allKaryawan as $karyawan)
                         @php
                             $abs = $karyawan->absensis->first();
@@ -84,7 +138,6 @@
                             $statusPulang = null;
                             $txtLembur = null;
                             
-                            // Logika Masuk (Terlambat)
                             if($abs && !$izin) {
                                 $jamMasukKantor = \Carbon\Carbon::parse($abs->jam_masuk)->startOfDay()->setHour(8);
                                 if ($abs->jam_masuk->gt($jamMasukKantor)) {
@@ -92,26 +145,23 @@
                                     $txtTerlambat = $diffIn->format('%h Jam %i Menit');
                                 }
 
-                                // Logika Pulang: JAM PULANG 16:00
                                 $jamPulangKantor = \Carbon\Carbon::parse($abs->jam_masuk)->startOfDay()->setHour(16); 
-                                
                                 if($abs->jam_keluar) {
                                     $jamKeluar = \Carbon\Carbon::parse($abs->jam_keluar);
-                                    // Lembur jika lebih dari 30 menit setelah jam 16:00
                                     if($jamKeluar->gt($jamPulangKantor->copy()->addMinutes(30))) {
                                         $statusPulang = 'lembur';
                                         $diffOut = $jamKeluar->diff($jamPulangKantor);
                                         $txtLembur = $diffOut->format('%hj %im');
                                     }
                                 } else {
-                                    // Deteksi jika sudah lewat hari namun belum absen keluar
                                     if(\Carbon\Carbon::now()->gt($today->copy()->endOfDay())) {
                                         $statusPulang = 'alpha_keluar';
                                     }
                                 }
                             }
                         @endphp
-                        <tr class="hover:bg-slate-50/30 transition-colors group">
+                        <tr x-show="isMatch('{{ $karyawan->nama }}', '{{ $karyawan->nip }}', '{{ $karyawan->divisi_id }}', '{{ $karyawan->jabatan }}')" 
+                            class="hover:bg-slate-50/30 transition-colors group">
                             <td class="px-8 py-6">
                                 <div class="flex items-center space-x-4">
                                     <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-black text-cdi group-hover:bg-cdi group-hover:text-white transition-all">
@@ -119,7 +169,9 @@
                                     </div>
                                     <div>
                                         <p class="font-black text-cdi uppercase italic text-sm leading-none tracking-tight">{{ $karyawan->nama }}</p>
-                                        <p class="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-widest">{{ $karyawan->nip }}</p>
+                                        <p class="text-[9px] font-bold text-slate-400 uppercase mt-1 tracking-widest">
+                                            {{ $karyawan->nip }} • {{ $karyawan->divisi->nama ?? 'N/A' }}
+                                        </p>
                                     </div>
                                 </div>
                             </td>
@@ -167,7 +219,7 @@
                                 @elseif($statusPulang == 'alpha_keluar')
                                     <div class="flex flex-col items-end">
                                         <span class="font-black text-red-300 text-lg tracking-tighter">--:--</span>
-                                        <span class="text-[7px] font-black text-red-500 uppercase italic bg-red-50 px-2 py-0.5 rounded border border-red-100">Belum melakukan absensi keluar</span>
+                                        <span class="text-[7px] font-black text-red-500 uppercase italic bg-red-50 px-2 py-0.5 rounded border border-red-100">Lupa Absen Keluar</span>
                                     </div>
                                 @else
                                     <span class="font-black text-slate-200 text-lg tracking-tighter">--:--</span>
@@ -206,13 +258,12 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
-                        @php
-                            $perizinanPending = \App\Models\Perizinan::where('status', 'pending')->with('karyawan')->latest()->get();
-                        @endphp
                         @forelse($perizinanPending as $izin)
-                        <tr class="hover:bg-slate-50/30 transition-colors">
+                        <tr x-show="isMatch('{{ $izin->karyawan->nama }}', '{{ $izin->karyawan->nip }}', '{{ $izin->karyawan->divisi_id }}', '{{ $izin->karyawan->jabatan }}')" 
+                            class="hover:bg-slate-50/30 transition-colors">
                             <td class="px-8 py-6">
                                 <p class="font-black text-cdi uppercase italic text-sm leading-none">{{ $izin->karyawan->nama }}</p>
+                                <p class="text-[9px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">{{ $izin->karyawan->divisi->nama ?? 'N/A' }} • {{ $izin->karyawan->jabatan }}</p>
                                 <p class="text-[10px] font-bold text-slate-400 mt-2 italic">"{{ $izin->alasan }}"</p>
                                 <span class="inline-block mt-2 px-2 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-bold rounded uppercase tracking-wider border border-blue-100">{{ $izin->jenis_izin }}</span>
                             </td>
@@ -248,7 +299,6 @@
                         @empty
                         <tr>
                             <td colspan="4" class="px-8 py-20 text-center">
-                                <div class="opacity-20 mb-4 text-4xl text-cdi"><i class="fas fa-check-circle"></i></div>
                                 <p class="text-slate-300 font-black uppercase italic text-xs tracking-widest">Semua pengajuan telah diproses</p>
                             </td>
                         </tr>
@@ -274,13 +324,11 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
-                        @php
-                            $historyPerizinan = \App\Models\Perizinan::where('status', '!=', 'pending')->with('karyawan')->latest()->take(10)->get();
-                        @endphp
                         @foreach($historyPerizinan as $h)
-                        <tr>
+                        <tr x-show="isMatch('{{ $h->karyawan->nama }}', '{{ $h->karyawan->nip }}', '{{ $h->karyawan->divisi_id }}', '{{ $h->karyawan->jabatan }}')">
                             <td class="px-8 py-4">
                                 <span class="font-bold text-cdi uppercase text-xs italic leading-none">{{ $h->karyawan->nama }}</span>
+                                <p class="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">{{ $h->karyawan->divisi->kode ?? '??' }}</p>
                             </td>
                             <td class="px-8 py-4">
                                 <span class="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{{ $h->jenis_izin }}</span>
@@ -306,7 +354,7 @@
 
 <style>
     @media print {
-        header, aside, nav, .print\:hidden, .text-right, button, .flex.bg-slate-100, .opacity-80, .shadow-lg { 
+        header, aside, nav, .print\:hidden, .text-right, button, .flex.bg-slate-100, .opacity-80, .shadow-lg, .bg-white.p-6.rounded-\[2\.5rem\] { 
             display: none !important; 
         }
         body { 
