@@ -8,8 +8,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * Model Divisi
- * Mengelola data departemen/divisi organisasi dan relasinya dengan personel (Karyawan).
- * Dilengkapi dengan fitur manajemen jabatan dinamis, sistem kuota, dan nominal gaji bulanan.
+ * Mengelola data departemen dan standar gaji jabatan.
+ * UPDATE: Berfungsi sebagai 'Master Data' yang nilainya akan di-snapshot ke PayrollHistory setiap bulan.
  */
 class Divisi extends Model
 {
@@ -28,7 +28,7 @@ class Divisi extends Model
         'kode',            // Contoh: ITS
         'deskripsi',       // Penjelasan detail divisi
         'tugas_utama',     // Daftar tugas (disimpan sebagai string dipisah koma)
-        'daftar_jabatan',  // Data jabatan, kuota, & GAJI (disimpan sebagai JSON)
+        'daftar_jabatan',  // Data jabatan, kuota, & GAJI DEFAULT (disimpan sebagai JSON)
         'icon',            // Class FontAwesome (fas fa-code)
         'warna',           // Kode warna (blue, orange, dll)
     ];
@@ -49,7 +49,7 @@ class Divisi extends Model
 
     /**
      * Relasi: Satu Divisi memiliki banyak Karyawan.
-     * Memungkinkan pemanggilan anggota tim melalui: $divisi->karyawans
+     * Menggunakan foreign key 'divisi_id' di tabel karyawans.
      */
     public function karyawans(): HasMany
     {
@@ -64,7 +64,7 @@ class Divisi extends Model
 
     /**
      * Accessor: Menghitung jumlah total anggota dalam divisi secara keseluruhan.
-     * Penggunaan di View: {{ $divisi->jumlah_anggota }}
+     * Akses via: $divisi->jumlah_anggota
      */
     public function getJumlahAnggotaAttribute()
     {
@@ -73,6 +73,7 @@ class Divisi extends Model
 
     /**
      * Accessor: Memproses string tugas_utama menjadi array.
+     * Akses via: $divisi->daftar_tugas
      */
     public function getDaftarTugasAttribute()
     {
@@ -84,6 +85,7 @@ class Divisi extends Model
 
     /**
      * Accessor: Mengambil hanya nama-nama jabatan (keys) dari array daftar_jabatan.
+     * Akses via: $divisi->jabatans
      */
     public function getJabatansAttribute()
     {
@@ -134,43 +136,52 @@ class Divisi extends Model
     */
 
     /**
-     * Ambil Nominal Gaji Bulanan berdasarkan Nama Jabatan.
-     * Mengambil data dari key nominal atau value langsung di JSON.
+     * Ambil Nominal Gaji Bulanan Standar berdasarkan Nama Jabatan.
+     * Digunakan sebagai nilai acuan "Master" sebelum di-copy ke PayrollHistory.
      * * @param string $namaJabatan
      * @return int
      */
     public function getGajiJabatan($namaJabatan)
     {
-        $data = $this->daftar_jabatan[$namaJabatan] ?? 0;
+        if (!$this->daftar_jabatan || !isset($this->daftar_jabatan[$namaJabatan])) {
+            return 0;
+        }
+
+        $data = $this->daftar_jabatan[$namaJabatan];
         
-        // Jika format JSON adalah {"Manager": 5000000}
+        // Jika format JSON sederhana: {"Staff": 5000000}
         if (is_numeric($data)) {
             return (int) $data;
         }
         
-        // Jika format JSON lebih kompleks {"Manager": {"gaji": 5000000, "kuota": 2}}
+        // Jika format JSON kompleks: {"Staff": {"gaji": 5000000, "kuota": 10}}
         return (int) ($data['gaji'] ?? 0);
     }
 
     /**
-     * Menghitung sisa kuota yang tersedia untuk jabatan tertentu.
+     * Menghitung sisa kuota yang tersedia untuk jabatan tertentu di divisi ini.
      * * @param string $namaJabatan
      * @return int
      */
     public function getSisaKuota($namaJabatan)
     {
-        $data = $this->daftar_jabatan[$namaJabatan] ?? 0;
+        if (!$this->daftar_jabatan || !isset($this->daftar_jabatan[$namaJabatan])) {
+            return 0;
+        }
+
+        $data = $this->daftar_jabatan[$namaJabatan];
         
-        // Ambil nilai kuota (jika format kompleks ambil key 'kuota', jika simpel gunakan value langsung)
+        // Ambil nilai kuota maksimal
         $max = is_array($data) ? ($data['kuota'] ?? 0) : $data;
         
+        // Hitung karyawan yang saat ini menempati jabatan tersebut di divisi ini
         $terisi = $this->karyawans()->where('jabatan', $namaJabatan)->count();
         
-        return max(0, $max - $terisi);
+        return max(0, (int)$max - $terisi);
     }
 
     /**
-     * Cek apakah divisi memiliki anggota.
+     * Cek apakah divisi memiliki anggota aktif.
      */
     public function hasMembers(): bool
     {

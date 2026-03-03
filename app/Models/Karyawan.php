@@ -12,7 +12,9 @@ use Carbon\Carbon;
 
 /**
  * Model Karyawan
- * Struktur data sinkron dengan Form Registrasi CDI, Migration, Payroll Hourly System, dan Digital ID Card.
+ * Struktur data sinkron dengan Form Registrasi CDI, Migration, Payroll System, dan Digital ID Card.
+ * UPDATE: Mendukung histori penggajian dinamis per bulan dan relasi divisi yang solid.
+ * * @property \App\Models\Divisi|null $divisi
  */
 class Karyawan extends Model
 {
@@ -53,29 +55,34 @@ class Karyawan extends Model
 
         // Data Pendidikan & Finansial
         'pendidikan_terakhir',
-        'status_pendidikan',    // Lulus, Mahasiswa Aktif, dsb.
+        'status_pendidikan',     // Lulus, Mahasiswa Aktif, dsb.
         'jumlah_tanggungan',
-        'bukti_tanggungan',
         'barcode_token',
-        'gaji_pokok',           // Dalam sistem ini berfungsi sebagai HOURLY RATE (Upah per Jam)
         'foto',
+        
+        // Catatan: Kolom gaji_pokok & tunjangan di bawah ini kini berfungsi sebagai 
+        // "Nilai Master/Default Saat Ini". Histori riil per bulan ada di relasi payrollHistories.
+        'gaji_pokok',           
+        'tunjangan_per_tanggungan', 
+        'bukti_tanggungan',
     ];
 
     /**
      * Casting atribut agar otomatis menjadi tipe data yang sesuai saat diakses.
      */
     protected $casts = [
-        'tanggal_lahir'     => 'date',
-        'tanggal_masuk'     => 'date',
-        'gaji_pokok'        => 'double',
-        'jumlah_tanggungan' => 'integer',
-        'created_at'        => 'datetime',
-        'updated_at'        => 'datetime',
+        'tanggal_lahir'            => 'date',
+        'tanggal_masuk'            => 'date',
+        'gaji_pokok'               => 'double',
+        'jumlah_tanggungan'        => 'integer',
+        'tunjangan_per_tanggungan' => 'double',
+        'created_at'               => 'datetime',
+        'updated_at'               => 'datetime',
     ];
 
     /**
      * Boot function untuk handling Delete Cascade dan Cleanup File.
-     * Memastikan file fisik dan data relasi terhapus saat record karyawan dihapus.
+     * Memastikan data terkait (User, Absensi, History) terhapus saat karyawan dihapus.
      */
     protected static function boot()
     {
@@ -84,9 +91,13 @@ class Karyawan extends Model
         static::deleting(function ($karyawan) {
             // 1. Hapus relasi yang bergantung pada id karyawan
             $karyawan->absensis()->delete();
-            $karyawan->perizinans()->delete();
+            $karyawan->payrollHistories()->delete(); 
             
-            // 2. Hapus file fisik (Foto & Bukti Tanggungan) dari storage agar tidak membebani server
+            if (method_exists($karyawan, 'perizinans')) {
+                $karyawan->perizinans()->delete();
+            }
+            
+            // 2. Hapus file fisik (Foto & Bukti Tanggungan)
             if ($karyawan->foto) {
                 Storage::disk('public')->delete('karyawan/foto/' . $karyawan->foto);
             }
@@ -94,7 +105,7 @@ class Karyawan extends Model
                 Storage::disk('public')->delete('karyawan/bukti_tanggungan/' . $karyawan->bukti_tanggungan);
             }
 
-            // 3. Hapus akun user terkait agar tidak ada data yatim (orphaned data)
+            // 3. Hapus akun user terkait agar tidak menjadi data sampah
             if ($karyawan->user) {
                 $karyawan->user()->delete();  
             }
@@ -108,7 +119,7 @@ class Karyawan extends Model
     */
 
     /**
-     * Relasi ke tabel Divisi (Banyak Karyawan dimiliki oleh satu Divisi).
+     * Relasi ke Tabel Divisi.
      */
     public function divisi(): BelongsTo
     {
@@ -116,7 +127,7 @@ class Karyawan extends Model
     }
 
     /**
-     * Relasi ke tabel Users (Satu Karyawan memiliki satu Akun Login).
+     * Relasi ke Akun Login User.
      */
     public function user(): HasOne
     {
@@ -124,7 +135,7 @@ class Karyawan extends Model
     }
 
     /**
-     * Relasi ke data Absensi.
+     * Relasi ke Riwayat Absensi.
      */
     public function absensis(): HasMany
     {
@@ -132,60 +143,99 @@ class Karyawan extends Model
     }
 
     /**
-     * Relasi ke data Perizinan.
+     * Relasi ke Riwayat Izin/Sakit.
      */
     public function perizinans(): HasMany
     {
         return $this->hasMany(Perizinan::class, 'karyawan_id');
     }
 
+    /**
+     * Relasi Histori Penggajian Per Bulan (Snapshot).
+     */
+    public function payrollHistories(): HasMany
+    {
+        return $this->hasMany(PayrollHistory::class, 'karyawan_id');
+    }
+
     /*
     |--------------------------------------------------------------------------
-    | ACCESSORS (Atribut Virtual / Format Data)
+    | ACCESSORS & DYNAMIC GETTERS
     |--------------------------------------------------------------------------
-    | Akses di Blade: $karyawan->nama_atribut
     */
 
     /**
-     * Mendapatkan umur saat ini secara otomatis. Akses: $karyawan->age
+     * Mengambil Nama Divisi dengan proteksi jika divisi dihapus (Null-safe).
      */
+    public function getNamaDivisiAttribute()
+    {
+        return $this->divisi?->nama ?? 'Tanpa Divisi';
+    }
+
+    /**
+     * Logika Cerdas: Ambil Gaji Pokok dari Histori Bulan Terkait.
+     * Jika histori tidak ditemukan, ambil dari Gaji Pokok Master.
+     */
+    public function getGajiByPeriode($bulan, $tahun)
+    {
+        $history = $this->payrollHistories()
+            ->where('bulan', $bulan)
+            ->where('tahun', $tahun)
+            ->first();
+
+        return $history ? (float) $history->gaji_pokok_nominal : (float) $this->gaji_pokok;
+    }
+
+    /**
+     * Logika Cerdas: Ambil Rate Per Jam dari Histori Bulan Terkait.
+     */
+    public function getHourlyRateByPeriode($bulan, $tahun)
+    {
+        $history = $this->payrollHistories()
+            ->where('bulan', $bulan)
+            ->where('tahun', $tahun)
+            ->first();
+
+        return $history ? (float) $history->rate_absensi_per_jam : 25000;
+    }
+
     public function getAgeAttribute()
     {
         return $this->tanggal_lahir ? $this->tanggal_lahir->age : null;
     }
 
-    /**
-     * Menghitung Masa Kerja (Sejak tanggal masuk hingga sekarang).
-     */
     public function getMasaKerjaAttribute()
     {
         if (!$this->tanggal_masuk) return "-";
         return $this->tanggal_masuk->diff(now())->format('%y Tahun, %m Bulan');
     }
 
-    /**
-     * Format Rupiah untuk Hourly Rate. Akses: $karyawan->formatted_hourly_rate
-     */
-    public function getFormattedHourlyRateAttribute()
+    public function getFormattedGajiPokokAttribute()
     {
-        return 'Rp ' . number_format((float) $this->gaji_pokok, 0, ',', '.') . ' /jam';
+        return 'Rp ' . number_format((float) $this->gaji_pokok, 0, ',', '.');
     }
 
     /**
-     * URL Foto Profil dengan Fallback UI-Avatars. Akses: $karyawan->profile_picture
+     * Menghitung total tunjangan berdasarkan jumlah tanggungan di profil master.
+     */
+    public function getTotalTunjanganTanggunganAttribute()
+    {
+        return (float) ($this->jumlah_tanggungan * $this->tunjangan_per_tanggungan);
+    }
+
+    /**
+     * Mengambil URL Foto Profil. Fallback ke UI-Avatars jika foto kosong.
      */
     public function getProfilePictureAttribute()
     {
         if ($this->foto && Storage::disk('public')->exists('karyawan/foto/' . $this->foto)) {
             return asset('storage/karyawan/foto/' . $this->foto);
         }
-        
-        // Fallback: Jika foto kosong, buat avatar otomatis berdasarkan nama menggunakan warna Navy CDI (#003366)
         return 'https://ui-avatars.com/api/?name=' . urlencode($this->nama) . '&background=003366&color=fff&bold=true';
     }
 
     /**
-     * URL Bukti Tanggungan. Akses: $karyawan->bukti_tanggungan_url
+     * Mengambil URL Bukti Tanggungan (KK/Akta).
      */
     public function getBuktiTanggunganUrlAttribute()
     {
@@ -196,42 +246,35 @@ class Karyawan extends Model
     }
 
     /**
-     * Inisial Nama (Contoh: "Archel Arisandi" -> "AA"). Akses: $karyawan->initials
+     * Menghasilkan inisial nama (Contoh: Budi Santoso -> BS).
      */
     public function getInitialsAttribute()
     {
         if (!$this->nama) return "??";
-        $words = explode(' ', $this->nama);
+        $words = explode(' ', trim($this->nama));
         $initials = collect($words)->map(fn($w) => mb_substr($w, 0, 1))->take(2)->join('');
         return strtoupper($initials);
     }
 
     /*
     |--------------------------------------------------------------------------
-    | HELPERS (Fungsi Pembantu Logika Bisnis)
+    | HELPERS (Logika Bisnis)
     |--------------------------------------------------------------------------
     */
 
-    /**
-     * Cek apakah statusnya adalah kelompok magang.
-     */
     public function isMagang(): bool
     {
         $statusLower = strtolower($this->status);
         return str_contains($statusLower, 'magang');
     }
 
-    /**
-     * Cek apakah statusnya adalah karyawan tetap.
-     */
     public function isTetap(): bool
     {
-        return $this->status === 'tetap';
+        return strtolower($this->status) === 'tetap';
     }
 
     /**
-     * Scope pencarian cepat berdasarkan NIP, NIK, atau Barcode Token.
-     * Penggunaan di Controller: Karyawan::byIdentifier('12345')->first();
+     * Scope untuk mempermudah pencarian karyawan berdasarkan identitas apapun.
      */
     public function scopeByIdentifier($query, $identifier)
     {
@@ -241,10 +284,10 @@ class Karyawan extends Model
     }
 
     /**
-     * Scope untuk mengambil karyawan aktif (bisa dikembangkan jika ada kolom is_active)
+     * Scope untuk filter karyawan yang masih aktif bekerja.
      */
     public function scopeAktif($query)
     {
         return $query->whereNotNull('tanggal_masuk');
-    }
+    } 
 }

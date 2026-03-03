@@ -3,252 +3,301 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\Karyawan;
-use App\Models\Absensi;
+use App\Models\Karyawan; 
 use App\Models\Divisi;
+use App\Models\PayrollHistory;
+use App\Models\Absensi;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 
-/**
- * Controller PayrollController
- * Mengelola sistem penggajian berdasarkan jam kerja (Hourly Rate),
- * perhitungan lembur otomatis, manajemen tunjangan keluarga, 
- * dan sinkronisasi gaji berdasarkan jabatan di Divisi.
- */
 class PayrollController extends Controller
 {
     /**
-     * Menampilkan daftar payroll dengan sistem Hourly Rate & Lembur (Admin Dashboard).
+     * Menampilkan Halaman Utama Payroll.
+     * Mengintegrasikan data Master Karyawan dengan Snapshot History Bulanan.
      */
     public function index(Request $request)
     {
-        $search = $request->search;
+        // 1. Ambil filter periode (Bulan dan Tahun)
         $bulan = (int) $request->get('bulan', now()->month);
         $tahun = (int) $request->get('tahun', now()->year);
-        
-        // Konfigurasi Payroll (Session Based / Default)
-        $config = session('payroll_config', [
-            'tunjangan_tanggungan' => 100000, // Per anak/istri
-            'lembur_multiplier' => 1.5,      // 1.5x dari hourly rate
-            'bpjs_percent' => 1              // Potongan BPJS dalam persen
-        ]);
+        $search = $request->get('search');
+        $divisiFilter = $request->get('divisi_id'); 
 
-        // 1. Ambil data karyawan dengan absensi pada periode yang dipilih
-        $karyawans = Karyawan::with(['divisi', 'absensis' => function($query) use ($bulan, $tahun) {
-                $query->whereMonth('jam_masuk', $bulan)
-                      ->whereYear('jam_masuk', $tahun)
-                      ->whereNotNull('jam_keluar'); // Hanya hitung yang sudah checkout
-            }])
-            ->when($search, function($query) use ($search) {
-                $query->where(function($q) use ($search) {
-                    $q->where('nama', 'like', "%{$search}%")
-                      ->orWhere('nip', 'like', "%{$search}%");
-                });
-            })
-            ->get();
-
-        // 2. Ambil data semua divisi untuk modal pembaruan gaji jabatan
         $divisis = Divisi::all();
 
-        // 3. Kalkulasi Statistik Global untuk Dashboard Card
-        $totalGajiPokok = 0; 
-        $totalLemburGlobal = 0;
-        $totalTunjanganGlobal = 0;
-        
-        foreach ($karyawans as $k) {
-            $hourlyRate = $k->gaji_pokok > 0 ? $k->gaji_pokok : 20000; 
-            $menitKerjaNormal = 0;
-            $menitLembur = 0;
+        // 2. Load Karyawan dengan Eager Loading
+        $query = Karyawan::with(['divisi', 'payrollHistories']);
 
-            foreach ($k->absensis as $abs) {
-                if ($abs->jam_masuk && $abs->jam_keluar) {
-                    $durasi = $abs->jam_masuk->diffInMinutes($abs->jam_keluar);
-                    
-                    // Batas Kerja Normal: 8 Jam (480 menit)
-                    if ($durasi > 480) {
-                        $menitKerjaNormal += 480;
-                        $menitLembur += ($durasi - 480);
-                    } else {
-                        $menitKerjaNormal += $durasi;
-                    }
+        if ($search) {
+            $query->where(function($q) use ($search) {
+                $q->where('nama', 'LIKE', "%{$search}%")
+                  ->orWhere('nip', 'LIKE', "%{$search}%");
+            });
+        }
+
+        if ($divisiFilter) {
+            $query->where('divisi_id', $divisiFilter);
+        }
+
+        $karyawans = $query->get();
+
+        // 3. Mapping data dengan pengamanan penuh
+        foreach ($karyawans as $k) {
+            $k->generated_initials = $k->initials ?? '??';
+
+            $history = $k->payrollHistories
+                ->where('bulan', $bulan)
+                ->where('tahun', $tahun)
+                ->first();
+
+            $k->is_locked = $history ? true : false;
+            $k->history_id = $history ? $history->id : null;
+
+            if ($history) {
+                // Jika ada snapshot, gunakan data history
+                $k->gaji_pokok_final   = $history->gaji_pokok_nominal;
+                $k->gaji_jabatan_final = $history->gaji_divisi_snapshot;
+                $k->rate_absensi_final = $history->rate_absensi_per_jam;
+                $k->tunjangan_final    = $history->tunjangan_per_tanggungan;
+                // Fallback: Jika di history snapshot tidak sengaja 0, ambil dari master karyawan
+                $k->tanggungan_final   = ($history->jumlah_tanggungan_snapshot > 0) 
+                                         ? $history->jumlah_tanggungan_snapshot 
+                                         : ($k->jumlah_tanggungan ?? 0);
+            } else {
+                // Jika belum ada snapshot, gunakan data Master Karyawan
+                $k->gaji_pokok_final   = $k->gaji_pokok ?? 0;
+                $k->gaji_jabatan_final = $k->divisi ? $k->divisi->getGajiJabatan($k->jabatan) : 0;
+                $k->rate_absensi_final = $k->hourly_rate ?? 25000; 
+                $k->tunjangan_final    = $k->tunjangan_per_tanggungan ?? 0;
+                $k->tanggungan_final   = $k->jumlah_tanggungan ?? 0;
+            }
+
+            // Hitung Absensi
+            $absensis = Absensi::where('karyawan_id', $k->id)
+                ->whereMonth('jam_masuk', $bulan)
+                ->whereYear('jam_masuk', $tahun)
+                ->get();
+
+            $totalMenit = 0;
+            foreach ($absensis as $a) {
+                if ($a->jam_masuk && $a->jam_keluar) {
+                    $totalMenit += Carbon::parse($a->jam_masuk)->diffInMinutes(Carbon::parse($a->jam_keluar));
                 }
             }
+            $k->total_jam_kerja = floor($totalMenit / 60);
 
-            $jamNormal = floor($menitKerjaNormal / 60);
-            $jamLembur = floor($menitLembur / 60);
-
-            $totalGajiPokok += ($jamNormal * $hourlyRate);
-            $totalLemburGlobal += ($jamLembur * ($hourlyRate * $config['lembur_multiplier']));
-            $totalTunjanganGlobal += (($k->jumlah_tanggungan ?? 0) * $config['tunjangan_tanggungan']);
+            // Kalkulasi Total Gaji
+            $k->total_gaji = (float)$k->gaji_pokok_final 
+                           + (float)$k->gaji_jabatan_final 
+                           + ((int)$k->total_jam_kerja * (float)$k->rate_absensi_final)
+                           + ((int)$k->tanggungan_final * (float)$k->tunjangan_final);
         }
-        
-        $estimasiTotal = $totalGajiPokok + $totalLemburGlobal + $totalTunjanganGlobal;
 
-        return view('admin.payroll.index', compact(
-            'karyawans', 
-            'estimasiTotal', 
-            'totalGajiPokok', 
-            'totalLemburGlobal',
-            'totalTunjanganGlobal',
-            'config',
-            'bulan',
-            'tahun',
-            'divisis'
-        ));
+        return view('admin.payroll.index', compact('karyawans', 'divisis', 'bulan', 'tahun'));
     }
 
     /**
-     * Memperbarui Gaji Pokok/Hourly Rate berdasarkan Jabatan di dalam Divisi (JSON).
-     * Fungsi ini menangani form dari modal di halaman index payroll.
+     * Update Gaji Pokok / Hourly Rate Individu.
      */
-    public function updateGajiJabatan(Request $request)
+    public function update(Request $request)
     {
         $request->validate([
-            'divisi_jabatan' => 'required',
-            'gaji_baru' => 'required|numeric|min:0',
+            'karyawan_id' => 'required|exists:karyawans,id',
+            'bulan'       => 'required|integer',
+            'tahun'       => 'required|integer',
+            'gaji_pokok'  => 'nullable|numeric|min:0',
+            'hourly_rate' => 'nullable|numeric|min:0',
         ]);
 
-        // Value format: "divisi_id|nama_jabatan"
-        $parts = explode('|', $request->divisi_jabatan);
-        $divisiId = $parts[0];
-        $namaJabatan = $parts[1];
+        try {
+            $karyawan = Karyawan::findOrFail($request->karyawan_id);
+            $overrides = [];
 
-        $divisi = Divisi::findOrFail($divisiId);
-        $daftar = $divisi->daftar_jabatan;
-
-        // Update data gaji di dalam JSON daftar_jabatan
-        if (isset($daftar[$namaJabatan])) {
-            if (is_array($daftar[$namaJabatan])) {
-                $daftar[$namaJabatan]['gaji'] = (int) $request->gaji_baru;
-            } else {
-                // Support format lama jika hanya berisi integer kuota
-                $daftar[$namaJabatan] = (int) $request->gaji_baru;
+            if ($request->filled('gaji_pokok')) {
+                $karyawan->gaji_pokok = $request->gaji_pokok;
+                $overrides['gaji_pokok_nominal'] = $request->gaji_pokok;
             }
-            
-            $divisi->update(['daftar_jabatan' => $daftar]);
 
-            // Sinkronisasi otomatis ke semua karyawan yang memiliki jabatan tersebut
-            Karyawan::where('divisi_id', $divisiId)
-                    ->where('jabatan', $namaJabatan)
-                    ->update(['gaji_pokok' => $request->gaji_baru]);
+            if ($request->filled('hourly_rate')) {
+                $karyawan->hourly_rate = $request->hourly_rate;
+                $overrides['rate_absensi_per_jam'] = $request->hourly_rate;
+            }
 
-            return redirect()->back()->with('success', "Gaji untuk jabatan $namaJabatan berhasil diperbarui!");
+            $karyawan->save();
+            $this->syncSnapshot($karyawan, $request->bulan, $request->tahun, $overrides);
+
+            return redirect()->back()->with('success', 'Data penggajian individu berhasil diperbarui.');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal memperbarui data: ' . $e->getMessage());
         }
-
-        return redirect()->back()->with('error', "Jabatan tidak ditemukan!");
     }
 
     /**
-     * Menampilkan Slip Gaji untuk Karyawan yang login (Sisi Karyawan).
-     */
-    public function slipSaya(Request $request)
-    {
-        $user = Auth::user();
-        $karyawan = Karyawan::with('divisi')->where('id', $user->karyawan_id)->first();
-
-        if (!$karyawan) {
-            return redirect()->back()->with('error', 'Data profil karyawan tidak ditemukan.');
-        }
-
-        $bulan = (int) $request->get('bulan', now()->month);
-        $tahun = (int) $request->get('tahun', now()->year);
-
-        $config = session('payroll_config', [
-            'tunjangan_tanggungan' => 100000,
-            'lembur_multiplier' => 1.5,
-            'bpjs_percent' => 1
-        ]);
-
-        $absensis = Absensi::where('karyawan_id', $karyawan->id)
-            ->whereMonth('jam_masuk', $bulan)
-            ->whereYear('jam_masuk', $tahun)
-            ->whereNotNull('jam_keluar')
-            ->get();
-
-        $totalMenitNormal = 0;
-        $totalMenitLembur = 0;
-
-        foreach ($absensis as $abs) {
-            $durasi = $abs->jam_masuk->diffInMinutes($abs->jam_keluar);
-            if ($durasi > 480) {
-                $totalMenitNormal += 480;
-                $totalMenitLembur += ($durasi - 480);
-            } else {
-                $totalMenitNormal += $durasi;
-            }
-        }
-
-        $jamNormal = floor($totalMenitNormal / 60);
-        $jamLembur = floor($totalMenitLembur / 60);
-
-        $hourlyRate = $karyawan->gaji_pokok > 0 ? $karyawan->gaji_pokok : 20000;
-        $gajiDasar = $jamNormal * $hourlyRate;
-        $upahLembur = $jamLembur * ($hourlyRate * $config['lembur_multiplier']);
-        $tunjanganTanggungan = ($karyawan->jumlah_tanggungan ?? 0) * $config['tunjangan_tanggungan'];
-        
-        $bruto = $gajiDasar + $upahLembur + $tunjanganTanggungan;
-        $potonganBPJS = $bruto * ($config['bpjs_percent'] / 100);
-        $grandTotal = $bruto - $potonganBPJS;
-
-        return view('karyawan.slip_gaji', compact(
-            'karyawan', 'jamNormal', 'jamLembur', 'bulan', 'tahun', 
-            'config', 'gajiDasar', 'upahLembur', 'tunjanganTanggungan', 
-            'potonganBPJS', 'grandTotal', 'hourlyRate'
-        ));
-    }
-
-    /**
-     * Memperbarui Konfigurasi Global (Rate Tunjangan & Multiplier Lembur).
+     * Update Parameter Tunjangan Keluarga Global.
+     * FIX: Memastikan jumlah_tanggungan_snapshot diambil dari master saat update global.
      */
     public function store(Request $request)
     {
         $request->validate([
-            'tunjangan_tanggungan' => 'required|numeric|min:0',
-            'lembur_multiplier'    => 'required|numeric|min:1',
-            'bpjs_percent'         => 'required|numeric|min:0',
+            'bulan' => 'required|integer',
+            'tahun' => 'required|integer',
+            'tunjangan_tanggungan' => 'required|numeric|min:0'
         ]);
 
-        session(['payroll_config' => $request->only([
-            'tunjangan_tanggungan', 'lembur_multiplier', 'bpjs_percent'
-        ])]);
+        try {
+            DB::beginTransaction();
+            $karyawans = Karyawan::all();
 
-        return redirect()->back()->with('success', 'Konfigurasi payroll berhasil diperbarui!');
+            foreach ($karyawans as $k) {
+                $this->syncSnapshot($k, $request->bulan, $request->tahun, [
+                    'tunjangan_per_tanggungan' => $request->tunjangan_tanggungan,
+                    'jumlah_tanggungan_snapshot' => $k->jumlah_tanggungan // Paksa ambil dari master agar tidak 0
+                ]);
+            }
+
+            DB::commit();
+            return redirect()->back()->with('success', 'Parameter Tunjangan berhasil diperbarui.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()->with('error', 'Gagal: ' . $e->getMessage());
+        }
     }
 
     /**
-     * Memperbarui Hourly Rate (Gaji Pokok/Jam) karyawan secara individu.
+     * Update Massal Gaji Jabatan per Divisi.
      */
-    public function update(Request $request, $id)
+    public function updateGajiJabatan(Request $request)
     {
         $request->validate([
-            'gaji_pokok' => 'required|numeric|min:0',
+            'divisi_id' => 'required|exists:divisis,id',
+            'jabatan'   => 'required',
+            'nominal'   => 'required|numeric|min:0',
+            'bulan'     => 'required|integer',
+            'tahun'     => 'required|integer',
         ]);
 
-        $karyawan = Karyawan::findOrFail($id);
-        $karyawan->update(['gaji_pokok' => $request->gaji_pokok]);
+        try {
+            DB::beginTransaction();
+            $divisi = Divisi::find($request->divisi_id);
+            $daftar = $divisi->daftar_jabatan;
+            
+            if (isset($daftar[$request->jabatan])) {
+                if (is_array($daftar[$request->jabatan])) {
+                    $daftar[$request->jabatan]['gaji'] = (int) $request->nominal;
+                } else {
+                    $daftar[$request->jabatan] = (int) $request->nominal;
+                }
+                $divisi->update(['daftar_jabatan' => $daftar]);
+            }
 
-        return redirect()->back()->with('success', 'Hourly Rate untuk ' . $karyawan->nama . ' berhasil diperbarui!');
+            $karyawans = Karyawan::where('divisi_id', $request->divisi_id)
+                                 ->where('jabatan', $request->jabatan)->get();
+
+            foreach ($karyawans as $k) {
+                $this->syncSnapshot($k, $request->bulan, $request->tahun, ['gaji_divisi_snapshot' => $request->nominal]);
+            }
+
+            DB::commit();
+            return redirect()->back()->with('success', 'Gaji Jabatan berhasil diperbarui.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()->with('error', 'Gagal: ' . $e->getMessage());
+        }
     }
 
     /**
-     * Finalisasi Gaji (Locking).
+     * Update Jumlah Tanggungan Individu.
      */
-    public function lockGaji($id)
+    public function updateTanggungan(Request $request)
     {
-        $karyawan = Karyawan::findOrFail($id);
-        return redirect()->back()->with('success', 'Gaji periode ini untuk ' . $karyawan->nama . ' telah dikunci.');
+        $request->validate([
+            'karyawan_id'       => 'required|exists:karyawans,id',
+            'jumlah_tanggungan' => 'required|integer|min:0',
+            'bulan'             => 'required|integer',
+            'tahun'             => 'required|integer',
+        ]);
+
+        $karyawan = Karyawan::findOrFail($request->karyawan_id);
+        $karyawan->jumlah_tanggungan = $request->jumlah_tanggungan;
+        $karyawan->save();
+
+        $this->syncSnapshot($karyawan, $request->bulan, $request->tahun, [
+            'jumlah_tanggungan_snapshot' => $request->jumlah_tanggungan
+        ]);
+
+        return redirect()->back()->with('success', 'Data tanggungan berhasil diperbarui.');
     }
 
     /**
-     * Export data ke PDF/Excel (Placeholder).
+     * Mengunci (Lock) Seluruh Data Payroll Periode Terpilih.
      */
-    public function export(Request $request)
+    public function lockAll(Request $request)
     {
-        $bulanName = Carbon::create()->month($request->get('bulan', now()->month))->translatedFormat('F');
-        $tahun = $request->get('tahun', now()->year);
-        
-        return back()->with('success', 'Laporan payroll periode ' . $bulanName . ' ' . $tahun . ' sedang diproses.');
+        $bulan = (int) $request->input('bulan');
+        $tahun = (int) $request->input('tahun');
+
+        try {
+            DB::beginTransaction();
+            $karyawans = Karyawan::all();
+            foreach ($karyawans as $k) {
+                $this->syncSnapshot($k, $bulan, $tahun, ['keterangan' => 'Kunci Massal']);
+            }
+            DB::commit();
+            return redirect()->back()->with('success', "Payroll periode $bulan/$tahun dikunci.");
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()->with('error', 'Gagal: ' . $e->getMessage());
+        }
     }
+
+    /**
+     * Helper Utama Sinkronisasi Data Master ke Snapshot.
+     * FIX: Logika pengamanan agar jumlah_tanggungan tidak hilang.
+     */
+    private function syncSnapshot($karyawan, $bulan, $tahun, $overrides = [])
+    {
+        $existing = PayrollHistory::where([
+            'karyawan_id' => $karyawan->id, 
+            'bulan' => $bulan, 
+            'tahun' => $tahun
+        ])->first();
+
+        $gajiDivisi = $karyawan->divisi ? $karyawan->divisi->getGajiJabatan($karyawan->jabatan) : 0;
+
+        $data = array_merge([
+            'gaji_pokok_nominal'         => $karyawan->gaji_pokok ?? 0,
+            'gaji_divisi_snapshot'       => $gajiDivisi,
+            'rate_absensi_per_jam'       => $karyawan->hourly_rate ?? 25000,
+            'tunjangan_per_tanggungan'   => $karyawan->tunjangan_per_tanggungan ?? 0,
+            // LOGIKA FIX: Gunakan input baru (overrides), atau data history lama, atau master karyawan
+            'jumlah_tanggungan_snapshot' => $existing->jumlah_tanggungan_snapshot ?? ($karyawan->jumlah_tanggungan ?? 0),
+            'keterangan'                 => 'Updated via Payroll Manager'
+        ], $overrides);
+
+        return PayrollHistory::updateOrCreate(
+            ['karyawan_id' => $karyawan->id, 'bulan' => $bulan, 'tahun' => $tahun],
+            $data
+        );
+    }
+
+    public function getJabatanByDivisi($divisiId)
+    {
+        $divisi = Divisi::find($divisiId);
+        if (!$divisi || !$divisi->daftar_jabatan) return response()->json([]);
+        return response()->json(array_keys($divisi->daftar_jabatan));
+    }
+
+    public function lockPayroll(Request $request, $karyawanId)
+    {
+        $bulan = (int)$request->input('bulan', now()->month);
+        $tahun = (int)$request->input('tahun', now()->year);
+        $karyawan = Karyawan::findOrFail($karyawanId);
+        $this->syncSnapshot($karyawan, $bulan, $tahun, ['keterangan' => 'Dikunci manual']);
+        return redirect()->back()->with('success', "Payroll " . $karyawan->nama . " terkunci.");
+    }
+
+    public function slipSaya() { return view('karyawan.slip-gaji'); }
+    public function export() { return redirect()->back()->with('info', 'Fitur export dikembangkan.'); }
 }

@@ -11,6 +11,17 @@ use Illuminate\Support\Facades\Auth;
 
 /*
 |--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+|
+| Di sini adalah tempat di mana Anda dapat mendaftarkan rute web untuk aplikasi.
+| Rute-rute ini dimuat oleh RouteServiceProvider dan semuanya akan
+| ditetapkan ke grup middleware "web".
+|
+*/
+
+/*
+|--------------------------------------------------------------------------
 | 1. REDIRECTOR UTAMA
 |--------------------------------------------------------------------------
 */
@@ -75,6 +86,10 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
 
     // CRUD Karyawan (Data Personel Lengkap)
     Route::resource('manajemen-karyawan', ManajemenKaryawanController::class);
+    
+    // Custom action untuk download ID Card & Kelola Password dari sisi Admin
+    Route::get('/manajemen-karyawan/{id}/download-id-card', [ManajemenKaryawanController::class, 'downloadIdCard'])
+        ->name('manajemen-karyawan.download-id-card');
 
     // Fitur Absensi (Laporan & Riwayat untuk Admin)
     Route::prefix('absensi')->group(function () {
@@ -92,40 +107,59 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
     Route::post('/perizinan/konfirmasi/{id}/{status}', [AbsensiController::class, 'konfirmasiIzin'])
         ->name('admin.perizinan.konfirmasi');
 
-    // --- PAYROLL SYSTEM (Hourly Rate, Tunjangan & Lock System) ---
+    // --- PAYROLL SYSTEM (Sistem Penggajian Lengkap) ---
     Route::prefix('payroll')->group(function () {
-        Route::get('/', [PayrollController::class, 'index'])->name('payroll.index');
         
-        // Konfigurasi Bonus Absensi per Jam & Tunjangan (Modal 2)
+        /**
+         * FIX UNTUK ROUTE NOT FOUND:
+         * Mendefinisikan rute '/' dengan dua nama agar kompatibel dengan 
+         * Sidebar (payroll.index) dan Form Filter (admin.payroll).
+         */
+        Route::get('/', [PayrollController::class, 'index'])->name('payroll.index');
+        Route::get('/main', [PayrollController::class, 'index'])->name('admin.payroll');
+        
+        // Konfigurasi Bonus Absensi per Jam & Tunjangan Global (Modal Config)
         Route::post('/config', [PayrollController::class, 'store'])->name('payroll.config');
         
-        // Update Gaji Pokok per Jabatan di dalam Divisi (Modal 1)
+        // Update Gaji Pokok per Jabatan di dalam Divisi (Dinamis dari Modal Jabatan)
         Route::post('/update-gaji-jabatan', [PayrollController::class, 'updateGajiJabatan'])->name('payroll.update_gaji_jabatan');
         
-        // Update Hourly Rate individu (Kustom per karyawan jika diperlukan)
-        Route::patch('/update/{id}', [PayrollController::class, 'update'])->name('payroll.update');
+        /**
+         * Update Gaji Pokok / Rate Individu.
+         * Menangani sinkronisasi form di index.blade.php admin payroll.
+         */
+        Route::post('/update-rate', [PayrollController::class, 'update'])->name('payroll.update_hourly_rate');
+        Route::post('/update-gaji-pokok', [PayrollController::class, 'update'])->name('payroll.update_gaji_pokok');
         
-        // Finalisasi & Export Data Gaji
-        Route::post('/lock/{id}', [PayrollController::class, 'lockGaji'])->name('payroll.lock');
+        /**
+         * Update Jumlah Tanggungan Keluarga (Tunjangan per Kepala).
+         */
+        Route::post('/update-tanggungan', [PayrollController::class, 'updateTanggungan'])->name('payroll.update_tanggungan');
+
+        /**
+         * Finalisasi Gaji (Lock) & Export PDF/Excel
+         */
+        Route::post('/lock/{id}', [PayrollController::class, 'lockPayroll'])->name('payroll.lock');
+        Route::post('/lock-all', [PayrollController::class, 'lockAll'])->name('payroll.lock_all');
         Route::get('/export', [PayrollController::class, 'export'])->name('payroll.export');
+
+        /**
+         * AJAX: Ambil jabatan berdasarkan divisi
+         */
+        Route::get('/get-jabatan/{divisiId}', [PayrollController::class, 'getJabatanByDivisi'])->name('payroll.get_jabatan');
     });
 
     // --- MANAJEMEN DIVISI (Dinamis & Kuota Jabatan) ---
-    // Resource route untuk: index, create, store, show, edit, update, destroy
     Route::resource('divisi', DivisiController::class);
     
-    // Custom Action khusus untuk pengelolaan anggota di dalam divisi
     Route::prefix('divisi-action')->name('divisi.')->group(function() {
-        // Menambahkan anggota ke divisi (Assign)
+        // Menambahkan anggota ke divisi (Assign Personel & Auto Gaji Jabatan)
         Route::post('/{id}/tambah-anggota', [DivisiController::class, 'tambahAnggota'])->name('tambah-anggota');
         
-        // Melepaskan anggota dari divisi (Unassign)
+        // Melepaskan anggota dari divisi (Unassign Personel)
         Route::post('/hapus-anggota/{karyawan_id}', [DivisiController::class, 'hapusAnggota'])->name('hapus-anggota');
         
-        /**
-         * Route untuk update daftar pilihan jabatan.
-         * Digunakan untuk memproses input JSON jabatan, kuota maksimal, dan nominal gaji.
-         */
+        // Update Struktur Jabatan: kuota, nama jabatan, dan nominal gaji via JSON
         Route::patch('/{id}/update-jabatan', [DivisiController::class, 'updateJabatan'])->name('update-jabatan');
     });
 });
@@ -138,17 +172,19 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
 
 Route::middleware(['auth', 'role:karyawan'])->prefix('karyawan')->group(function () {
 
-    // Dashboard Karyawan (Info Shift & Jam Kerja)
+    // Dashboard Karyawan (Info Shift, Jam Kerja Aktif, & Pengumuman)
     Route::get('/dashboard', [AbsensiController::class, 'dashboardKaryawan'])->name('karyawan.dashboard');
     
-    // Profile & ID Card Digital (Dapat diakses mandiri)
+    // Digital ID Card & Profil Mandiri
     Route::get('/id-card', [ManajemenKaryawanController::class, 'showSelf'])->name('karyawan.id-card');
+    
+    // FIX: Route Update Foto Profil (Akses Controller Manajemen Karyawan)
     Route::post('/update-foto', [ManajemenKaryawanController::class, 'updateFoto'])->name('karyawan.update-foto');
 
-    // Riwayat Absensi Pribadi (Melihat jam masuk/pulang sendiri)
+    // Riwayat Absensi Pribadi
     Route::get('/absensi', [AbsensiController::class, 'riwayatSaya'])->name('karyawan.absensi');
 
-    // Pengajuan Izin/Sakit (Step: Upload Bukti -> Menunggu Konfirmasi Admin)
+    // Modul Pengajuan Izin/Sakit (Self-Service)
     Route::get('/perizinan', function () { 
         return view('karyawan.perizinan'); 
     })->name('karyawan.perizinan');
@@ -156,11 +192,11 @@ Route::middleware(['auth', 'role:karyawan'])->prefix('karyawan')->group(function
     Route::post('/perizinan/store', [AbsensiController::class, 'storeIzin'])
         ->name('karyawan.perizinan.store');
 
-    // Informasi Jabatan & Struktur Organisasi
+    // Informasi Struktur Organisasi & Detail Jabatan Saya
     Route::get('/jabatan', function () { 
         return view('karyawan.jabatan'); 
     })->name('karyawan.jabatan');
 
-    // Slip Gaji Bulanan (Detail perhitungan jam kerja x rate)
+    // Slip Gaji Bulanan (Detail transparan perhitungan Gaji Pokok + Lembur + Tunjangan)
     Route::get('/slip-gaji', [PayrollController::class, 'slipSaya'])->name('karyawan.slip-gaji');
 });

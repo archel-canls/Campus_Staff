@@ -1,24 +1,33 @@
 <?php
 
 namespace Database\Seeders;
-
+ 
 use App\Models\User;
 use App\Models\Karyawan;
 use App\Models\Divisi;
+use App\Models\Absensi;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class DatabaseSeeder extends Seeder
 {
     /**
      * Seed the application's database.
      * Mengisi data awal untuk sistem management staff CDI secara lengkap.
-     * Mendukung sistem kuota jabatan dan penggajian dalam format JSON.
+     * LOGIKA: Gaji pokok, divisi, absensi per jam, dan tunjangan dibuat BERBEDA tiap bulan.
      */
     public function run(): void
     {
-        // 1. BUAT DATA MASTER DIVISI (Dengan Struktur Jabatan, Kuota, dan Gaji JSON)
+        // Mendapatkan bulan berjalan untuk simulasi (Misal: 1 untuk Januari, 2 untuk Februari)
+        $currentMonth = now()->month;
+
+        // 1. BUAT DATA MASTER DIVISI (Gaji Divisi Berbeda tiap Bulan)
+        // Logika: Jika Februari, gaji standar jabatan naik/turun dibanding Januari
+        $itGaji = ($currentMonth == 2) ? 10000000 : 9000000; // Februari 10jt, Januari 9jt
+        $mktGaji = ($currentMonth == 2) ? 7000000 : 8500000;  // Februari 7jt, Januari 8.5jt
+
         $masterDivisi = [
             [
                 'nama' => 'IT Development',
@@ -26,10 +35,10 @@ class DatabaseSeeder extends Seeder
                 'deskripsi' => 'Pengembangan software dan infrastruktur digital.',
                 'tugas_utama' => 'Software Development, Maintenance Server, IT Support',
                 'daftar_jabatan' => [
-                    'Lead Developer' => ['kuota' => 1, 'gaji' => 9000000],
-                    'Senior Developer' => ['kuota' => 3, 'gaji' => 7500000],
-                    'Junior Developer' => ['kuota' => 5, 'gaji' => 5500000],
-                    'UI/UX Designer' => ['kuota' => 2, 'gaji' => 6000000]
+                    'Lead Developer' => ['kuota' => 1, 'gaji' => $itGaji],
+                    'Senior Developer' => ['kuota' => 3, 'gaji' => $itGaji - 1500000],
+                    'Junior Developer' => ['kuota' => 5, 'gaji' => $itGaji - 3500000],
+                    'UI/UX Designer' => ['kuota' => 2, 'gaji' => $itGaji - 3000000]
                 ],
                 'warna' => 'blue',
                 'icon' => 'fas fa-code'
@@ -40,10 +49,10 @@ class DatabaseSeeder extends Seeder
                 'deskripsi' => 'Strategi branding dan kampanye digital.',
                 'tugas_utama' => 'Branding, Social Media, Ads Optimization',
                 'daftar_jabatan' => [
-                    'Marketing Manager' => ['kuota' => 1, 'gaji' => 8500000],
-                    'Social Media Specialist' => ['kuota' => 2, 'gaji' => 5000000],
-                    'Content Creator' => ['kuota' => 3, 'gaji' => 4500000],
-                    'SEO Specialist' => ['kuota' => 1, 'gaji' => 5500000]
+                    'Marketing Manager' => ['kuota' => 1, 'gaji' => $mktGaji],
+                    'Social Media Specialist' => ['kuota' => 2, 'gaji' => $mktGaji - 3500000],
+                    'Content Creator' => ['kuota' => 3, 'gaji' => $mktGaji - 4000000],
+                    'SEO Specialist' => ['kuota' => 1, 'gaji' => $mktGaji - 3000000]
                 ],
                 'warna' => 'orange',
                 'icon' => 'fas fa-ad'
@@ -71,7 +80,7 @@ class DatabaseSeeder extends Seeder
                     'nama' => $d['nama'],
                     'deskripsi' => $d['deskripsi'],
                     'tugas_utama' => $d['tugas_utama'],
-                    'daftar_jabatan' => $d['daftar_jabatan'], // Eloquent cast otomatis ke JSON
+                    'daftar_jabatan' => $d['daftar_jabatan'],
                     'warna' => $d['warna'],
                     'icon' => $d['icon'],
                 ]
@@ -79,7 +88,7 @@ class DatabaseSeeder extends Seeder
             $divisiIds[$d['nama']] = $createdDivisi->id;
         }
 
-        // 2. BUAT AKUN ADMIN & SCANNER
+        // 2. BUAT AKUN NON-KARYAWAN
         User::updateOrCreate(
             ['username' => 'admin'],
             [
@@ -102,7 +111,7 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
-        // 3. DATA KARYAWAN & MAGANG LENGKAP
+        // 3. DATA KARYAWAN (Dengan Logika Perubahan Gaji Individu tiap Bulan)
         $dataKaryawan = [
             [
                 'nama' => 'Archel Arisandi',
@@ -122,13 +131,11 @@ class DatabaseSeeder extends Seeder
                 'status_pendidikan' => 'Lulus',
                 'alamat_ktp' => 'Jl. Digital Raya No. 1, Semarang',
                 'alamat_domisili' => 'Perumahan Dev Baru Blok A, Semarang',
-                'emergency' => [
-                    'nama' => 'Ibu Archel',
-                    'hub' => 'Ibu',
-                    'telp' => '08123456789'
-                ],
+                'emergency' => ['nama' => 'Ibu Archel', 'hub' => 'Ibu', 'telp' => '08123456789'],
                 'goldar' => 'O',
-                'tanggungan' => 2
+                'tanggungan' => 2,
+                'gaji_custom_januari' => 2000000,
+                'gaji_custom_februari' => 3000000 
             ],
             [
                 'nama' => 'Budi Santoso',
@@ -148,13 +155,11 @@ class DatabaseSeeder extends Seeder
                 'status_pendidikan' => 'Mahasiswa Aktif',
                 'alamat_ktp' => 'Jl. Pemuda No. 10, Semarang',
                 'alamat_domisili' => 'Kost Nyaman Gajahmungkur, Semarang',
-                'emergency' => [
-                    'nama' => 'Bp. Santoso',
-                    'hub' => 'Ayah',
-                    'telp' => '08771234567'
-                ],
+                'emergency' => ['nama' => 'Bp. Santoso', 'hub' => 'Ayah', 'telp' => '08771234567'],
                 'goldar' => 'A',
-                'tanggungan' => 0
+                'tanggungan' => 0,
+                'gaji_custom_januari' => 1500000,
+                'gaji_custom_februari' => 1800000 
             ],
             [
                 'nama' => 'Siti Aminah',
@@ -174,29 +179,26 @@ class DatabaseSeeder extends Seeder
                 'status_pendidikan' => 'Lulus',
                 'alamat_ktp' => 'Jl. Kaligawe No. 5, Semarang',
                 'alamat_domisili' => 'Jl. Kaligawe No. 5, Semarang',
-                'emergency' => [
-                    'nama' => 'Ahmad',
-                    'hub' => 'Saudara / Kerabat',
-                    'telp' => '08551234567'
-                ],
+                'emergency' => ['nama' => 'Ahmad', 'hub' => 'Saudara', 'telp' => '08551234567'],
                 'goldar' => 'B',
-                'tanggungan' => 0
+                'tanggungan' => 3,
+                'gaji_custom_januari' => 3500000,
+                'gaji_custom_februari' => 4000000
             ]
         ];
+
+        // 4. LOGIKA PERBEDAAN TUNJANGAN DAN ABSENSI PER JAM
+        $tunjanganPerKepala = ($currentMonth == 2) ? 300000 : 200000; // Februari 300k, Jan 200k
 
         foreach ($dataKaryawan as $data) {
             DB::beginTransaction();
             try {
-                // A. Simpan Profil Karyawan Lengkap
                 $divisiId = $divisiIds[$data['divisi_nama']] ?? null;
                 
-                // Cari nominal gaji dari struktur JSON divisi
-                $gajiNominal = 0;
-                if ($divisiId) {
-                    $div = Divisi::find($divisiId);
-                    $gajiNominal = $div->daftar_jabatan[$data['jabatan']]['gaji'] ?? 0;
-                }
+                // Pilih Gaji Pokok Individu berdasarkan bulan running
+                $gajiFinal = ($currentMonth == 2) ? $data['gaji_custom_februari'] : $data['gaji_custom_januari'];
 
+                // B. Simpan Profil Karyawan
                 $karyawan = Karyawan::updateOrCreate(
                     ['nik' => $data['nik']], 
                     [
@@ -215,20 +217,21 @@ class DatabaseSeeder extends Seeder
                         'status_pendidikan'   => $data['status_pendidikan'],
                         'divisi_id'           => $divisiId,
                         'jabatan'             => $data['jabatan'],
-                        'tanggal_masuk'       => now()->format('Y-m-d'),
+                        'tanggal_masuk'       => '2024-01-01',
+                        'emergency_1_nama'     => $data['emergency']['nama'],
+                        'emergency_1_hubungan' => $data['emergency']['hub'],
+                        'emergency_1_telp'     => $data['emergency']['telp'],
                         
-                        'emergency_1_nama'      => $data['emergency']['nama'],
-                        'emergency_1_hubungan'  => $data['emergency']['hub'],
-                        'emergency_1_telp'      => $data['emergency']['telp'],
+                        // Tunjangan berbeda tiap bulan
+                        'jumlah_tanggungan'        => $data['tanggungan'],
+                        'tunjangan_per_tanggungan' => $tunjanganPerKepala, 
                         
-                        'jumlah_tanggungan'     => $data['tanggungan'],
-                        'barcode_token'         => $data['nip'],
-                        // Gaji pokok diambil dari master jabatan divisi, jika tidak ada baru pakai default
-                        'gaji_pokok'            => $gajiNominal > 0 ? $gajiNominal : (($data['status'] == 'tetap') ? 5000000 : 2000000),
+                        'barcode_token'            => $data['nip'], 
+                        'gaji_pokok'               => $gajiFinal, // Gaji Pokok Individu berbeda
                     ]
                 );
 
-                // B. Simpan Akun User untuk Login Karyawan
+                // C. Simpan Akun User
                 User::updateOrCreate(
                     ['username' => strtolower($data['username'])],
                     [
@@ -240,6 +243,29 @@ class DatabaseSeeder extends Seeder
                     ]
                 );
 
+                // D. BUAT HISTORI ABSENSI (Agar total jam kerja & upah per jam berbeda)
+                // FIX: Menghapus angka 0 di depan angka 8 (08) untuk menghindari ParseError
+                
+                // Seed untuk Januari
+                for ($d = 1; $d <= 20; $d++) {
+                    Absensi::create([
+                        'karyawan_id' => $karyawan->id,
+                        'jam_masuk' => Carbon::create(2025, 1, $d, 8, 0, 0),
+                        'jam_keluar' => Carbon::create(2025, 1, $d, 16, 0, 0), // 8 jam
+                        'keterangan' => 'Hadir'
+                    ]);
+                }
+
+                // Seed untuk Februari
+                for ($d = 1; $d <= 20; $d++) {
+                    Absensi::create([
+                        'karyawan_id' => $karyawan->id,
+                        'jam_masuk' => Carbon::create(2025, 2, $d, 8, 0, 0),
+                        'jam_keluar' => Carbon::create(2025, 2, $d, 18, 0, 0), // 10 jam
+                        'keterangan' => 'Hadir'
+                    ]);
+                }
+
                 DB::commit();
             } catch (\Exception $e) {
                 DB::rollBack();
@@ -247,6 +273,10 @@ class DatabaseSeeder extends Seeder
             }
         }
         
-        $this->command->info('✅ Database Full Seeding Selesai (Struktur Gaji & Jabatan Sinkron)!');
+        $this->command->info('✅ Database Full Seeder Selesai!');
+        $this->command->warn("Simulasi: Bulan Saat Ini (" . Carbon::now()->format('F') . ")");
+        $this->command->info("- Gaji Pokok & Divisi: BERBEDA");
+        $this->command->info("- Upah per Jam: Januari 25k vs Februari 30k");
+        $this->command->info("- Tunjangan: Januari 200k vs Februari 300k");
     }
 }

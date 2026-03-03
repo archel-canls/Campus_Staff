@@ -31,7 +31,8 @@ return new class extends Migration
 
             /**
              * KOLOM: daftar_jabatan (Tipe JSON)
-             * MODIFIKASI: Sekarang menyimpan Kuota DAN Gaji Pokok.
+             * MODIFIKASI: Sekarang menyimpan Kuota DAN Gaji Pokok Default.
+             * Data ini akan menjadi acuan "Snapshot" saat membuat Payroll Bulanan.
              * Format yang disimpan: 
              * {
              * "Manager": {"kuota": 1, "gaji": 7000000}, 
@@ -50,7 +51,7 @@ return new class extends Migration
         /**
          * 2. HUBUNGKAN TABEL KARYAWANS KE TABEL DIVISIS.
          * Sinkronisasi struktur tabel karyawans agar memiliki relasi ke divisi.
-         * Menggunakan pemeriksaan Schema::hasTable dan hasColumn untuk keamanan data.
+         * Menggunakan pemeriksaan Schema::hasTable untuk mencegah error jika tabel belum ada.
          */
         if (Schema::hasTable('karyawans')) {
             Schema::table('karyawans', function (Blueprint $table) {
@@ -60,10 +61,10 @@ return new class extends Migration
                           ->nullable()
                           ->after('id') 
                           ->constrained('divisis')
-                          ->onDelete('set null'); // Jika divisi dihapus, karyawan tetap ada
+                          ->onDelete('set null'); // Jika divisi dihapus, karyawan tetap ada (divisi jadi null)
                 }
 
-                // Tambahkan kolom jabatan jika belum ada
+                // Tambahkan kolom jabatan jika belum ada (Jabatan string mengikuti key di JSON divisis)
                 if (!Schema::hasColumn('karyawans', 'jabatan')) {
                     $table->string('jabatan')->nullable()->after('divisi_id');
                 }
@@ -77,17 +78,18 @@ return new class extends Migration
      */
     public function down(): void
     {
-        // Lepas foreign key dan hapus kolom di tabel karyawans terlebih dahulu
+        // Lepas foreign key dan hapus kolom di tabel karyawans terlebih dahulu agar tidak error
         if (Schema::hasTable('karyawans')) {
             Schema::table('karyawans', function (Blueprint $table) {
                 if (Schema::hasColumn('karyawans', 'divisi_id')) {
-                    // Penting: Lepas foreign key constraint sebelum drop kolom
+                    // Lepas foreign key constraint sebelum drop kolom
+                    // Nama constraint default Laravel: karyawans_divisi_id_foreign
                     $table->dropForeign(['divisi_id']);
-                    $table->dropColumn(['divisi_id']);
+                    $table->dropColumn('divisi_id');
                 }
                 
                 if (Schema::hasColumn('karyawans', 'jabatan')) {
-                    $table->dropColumn(['jabatan']);
+                    $table->dropColumn('jabatan');
                 }
             });
         }
