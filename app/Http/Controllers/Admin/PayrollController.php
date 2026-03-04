@@ -27,7 +27,7 @@ class PayrollController extends Controller
 
         $divisis = Divisi::all();
 
-        // 2. Load Karyawan dengan Eager Loading
+        // 2. Load Karyawan dengan Eager Loading untuk performa
         $query = Karyawan::with(['divisi', 'payrollHistories']);
 
         if ($search) {
@@ -43,7 +43,7 @@ class PayrollController extends Controller
 
         $karyawans = $query->get();
 
-        // 3. Mapping data dengan pengamanan penuh
+        // 3. Mapping data dengan pengamanan penuh (Snapshot logic)
         foreach ($karyawans as $k) {
             $k->generated_initials = $k->initials ?? '??';
 
@@ -56,25 +56,30 @@ class PayrollController extends Controller
             $k->history_id = $history ? $history->id : null;
 
             if ($history) {
-                // Jika ada snapshot, gunakan data history
+                // Jika sudah ada snapshot, gunakan data permanen dari history
                 $k->gaji_pokok_final   = $history->gaji_pokok_nominal;
                 $k->gaji_jabatan_final = $history->gaji_divisi_snapshot;
                 $k->rate_absensi_final = $history->rate_absensi_per_jam;
                 $k->tunjangan_final    = $history->tunjangan_per_tanggungan;
-                // Fallback: Jika di history snapshot tidak sengaja 0, ambil dari master karyawan
+                $k->bonus_tambahan_final = $history->bonus_tambahan ?? 0;
+                $k->potongan_final     = $history->potongan_gaji ?? 0; 
+                
+                // Ambil jumlah tanggungan dari snapshot, fallback ke master jika nol
                 $k->tanggungan_final   = ($history->jumlah_tanggungan_snapshot > 0) 
                                          ? $history->jumlah_tanggungan_snapshot 
                                          : ($k->jumlah_tanggungan ?? 0);
             } else {
-                // Jika belum ada snapshot, gunakan data Master Karyawan
+                // Jika belum ada snapshot (Draft), gunakan data Master Karyawan
                 $k->gaji_pokok_final   = $k->gaji_pokok ?? 0;
                 $k->gaji_jabatan_final = $k->divisi ? $k->divisi->getGajiJabatan($k->jabatan) : 0;
                 $k->rate_absensi_final = $k->hourly_rate ?? 25000; 
                 $k->tunjangan_final    = $k->tunjangan_per_tanggungan ?? 0;
                 $k->tanggungan_final   = $k->jumlah_tanggungan ?? 0;
+                $k->bonus_tambahan_final = 0;
+                $k->potongan_final     = 0;
             }
 
-            // Hitung Absensi
+            // Hitung Absensi Menit ke Jam
             $absensis = Absensi::where('karyawan_id', $k->id)
                 ->whereMonth('jam_masuk', $bulan)
                 ->whereYear('jam_masuk', $tahun)
@@ -88,11 +93,13 @@ class PayrollController extends Controller
             }
             $k->total_jam_kerja = floor($totalMenit / 60);
 
-            // Kalkulasi Total Gaji
+            // Kalkulasi Total Gaji (Take Home Pay)
             $k->total_gaji = (float)$k->gaji_pokok_final 
                            + (float)$k->gaji_jabatan_final 
                            + ((int)$k->total_jam_kerja * (float)$k->rate_absensi_final)
-                           + ((int)$k->tanggungan_final * (float)$k->tunjangan_final);
+                           + ((int)$k->tanggungan_final * (float)$k->tunjangan_final)
+                           + (float)$k->bonus_tambahan_final
+                           - (float)$k->potongan_final;
         }
 
         return view('admin.payroll.index', compact('karyawans', 'divisis', 'bulan', 'tahun'));
@@ -136,7 +143,6 @@ class PayrollController extends Controller
 
     /**
      * Update Parameter Tunjangan Keluarga Global.
-     * FIX: Memastikan jumlah_tanggungan_snapshot diambil dari master saat update global.
      */
     public function store(Request $request)
     {
@@ -153,7 +159,7 @@ class PayrollController extends Controller
             foreach ($karyawans as $k) {
                 $this->syncSnapshot($k, $request->bulan, $request->tahun, [
                     'tunjangan_per_tanggungan' => $request->tunjangan_tanggungan,
-                    'jumlah_tanggungan_snapshot' => $k->jumlah_tanggungan // Paksa ambil dari master agar tidak 0
+                    'jumlah_tanggungan_snapshot' => $k->jumlah_tanggungan
                 ]);
             }
 
@@ -162,6 +168,89 @@ class PayrollController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             return redirect()->back()->with('error', 'Gagal: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Update Global Rate Absensi.
+     */
+    public function updateRateAbsensi(Request $request)
+    {
+        $request->validate([
+            'bulan' => 'required|integer',
+            'tahun' => 'required|integer',
+            'rate_absensi' => 'required|numeric|min:0'
+        ]);
+
+        try {
+            DB::beginTransaction();
+            $karyawans = Karyawan::all();
+
+            foreach ($karyawans as $k) {
+                $k->update(['hourly_rate' => $request->rate_absensi]);
+
+                $this->syncSnapshot($k, $request->bulan, $request->tahun, [
+                    'rate_absensi_per_jam' => $request->rate_absensi
+                ]);
+            }
+
+            DB::commit();
+            return redirect()->back()->with('success', 'Global Rate Absensi berhasil diperbarui.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return redirect()->back()->with('error', 'Gagal update rate: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Update Bonus Tambahan.
+     */
+    public function updateBonus(Request $request)
+    {
+        $request->validate([
+            'karyawan_id' => 'required|exists:karyawans,id',
+            'bonus'       => 'required|numeric|min:0',
+            'bulan'       => 'required|integer',
+            'tahun'       => 'required|integer',
+        ]);
+
+        try {
+            $karyawan = Karyawan::findOrFail($request->karyawan_id);
+            
+            $this->syncSnapshot($karyawan, $request->bulan, $request->tahun, [
+                'bonus_tambahan' => $request->bonus,
+                'keterangan'     => 'Bonus ditambahkan manual'
+            ]);
+
+            return redirect()->back()->with('success', 'Bonus karyawan berhasil diperbarui.');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal update bonus: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Update Potongan Gaji.
+     */
+    public function updatePotongan(Request $request)
+    {
+        $request->validate([
+            'karyawan_id' => 'required|exists:karyawans,id',
+            'potongan'    => 'required|numeric|min:0',
+            'bulan'       => 'required|integer',
+            'tahun'       => 'required|integer',
+        ]);
+
+        try {
+            $karyawan = Karyawan::findOrFail($request->karyawan_id);
+            
+            $this->syncSnapshot($karyawan, $request->bulan, $request->tahun, [
+                'potongan_gaji' => $request->potongan,
+                'keterangan'    => 'Potongan diinput manual'
+            ]);
+
+            return redirect()->back()->with('success', 'Potongan gaji berhasil diperbarui.');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal update potongan: ' . $e->getMessage());
         }
     }
 
@@ -219,15 +308,19 @@ class PayrollController extends Controller
             'tahun'             => 'required|integer',
         ]);
 
-        $karyawan = Karyawan::findOrFail($request->karyawan_id);
-        $karyawan->jumlah_tanggungan = $request->jumlah_tanggungan;
-        $karyawan->save();
+        try {
+            $karyawan = Karyawan::findOrFail($request->karyawan_id);
+            $karyawan->jumlah_tanggungan = $request->jumlah_tanggungan;
+            $karyawan->save();
 
-        $this->syncSnapshot($karyawan, $request->bulan, $request->tahun, [
-            'jumlah_tanggungan_snapshot' => $request->jumlah_tanggungan
-        ]);
+            $this->syncSnapshot($karyawan, $request->bulan, $request->tahun, [
+                'jumlah_tanggungan_snapshot' => $request->jumlah_tanggungan
+            ]);
 
-        return redirect()->back()->with('success', 'Data tanggungan berhasil diperbarui.');
+            return redirect()->back()->with('success', 'Data tanggungan berhasil diperbarui.');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -242,10 +335,10 @@ class PayrollController extends Controller
             DB::beginTransaction();
             $karyawans = Karyawan::all();
             foreach ($karyawans as $k) {
-                $this->syncSnapshot($k, $bulan, $tahun, ['keterangan' => 'Kunci Massal']);
+                $this->syncSnapshot($k, $bulan, $tahun, ['keterangan' => 'Kunci Massal Periode ' . $bulan . '/' . $tahun]);
             }
             DB::commit();
-            return redirect()->back()->with('success', "Payroll periode $bulan/$tahun dikunci.");
+            return redirect()->back()->with('success', "Payroll periode $bulan/$tahun berhasil dikunci.");
         } catch (\Exception $e) {
             DB::rollBack();
             return redirect()->back()->with('error', 'Gagal: ' . $e->getMessage());
@@ -254,7 +347,6 @@ class PayrollController extends Controller
 
     /**
      * Helper Utama Sinkronisasi Data Master ke Snapshot.
-     * FIX: Logika pengamanan agar jumlah_tanggungan tidak hilang.
      */
     private function syncSnapshot($karyawan, $bulan, $tahun, $overrides = [])
     {
@@ -271,8 +363,9 @@ class PayrollController extends Controller
             'gaji_divisi_snapshot'       => $gajiDivisi,
             'rate_absensi_per_jam'       => $karyawan->hourly_rate ?? 25000,
             'tunjangan_per_tanggungan'   => $karyawan->tunjangan_per_tanggungan ?? 0,
-            // LOGIKA FIX: Gunakan input baru (overrides), atau data history lama, atau master karyawan
-            'jumlah_tanggungan_snapshot' => $existing->jumlah_tanggungan_snapshot ?? ($karyawan->jumlah_tanggungan ?? 0),
+            'bonus_tambahan'             => $existing ? $existing->bonus_tambahan : 0,
+            'potongan_gaji'              => $existing ? $existing->potongan_gaji : 0,
+            'jumlah_tanggungan_snapshot' => $existing ? ($existing->jumlah_tanggungan_snapshot > 0 ? $existing->jumlah_tanggungan_snapshot : $karyawan->jumlah_tanggungan) : ($karyawan->jumlah_tanggungan ?? 0),
             'keterangan'                 => 'Updated via Payroll Manager'
         ], $overrides);
 
@@ -282,6 +375,9 @@ class PayrollController extends Controller
         );
     }
 
+    /**
+     * Mengambil daftar jabatan dari JSON divisi (Untuk AJAX di View)
+     */
     public function getJabatanByDivisi($divisiId)
     {
         $divisi = Divisi::find($divisiId);
@@ -289,15 +385,35 @@ class PayrollController extends Controller
         return response()->json(array_keys($divisi->daftar_jabatan));
     }
 
+    /**
+     * Mengunci (Lock) Payroll Karyawan secara satuan.
+     */
     public function lockPayroll(Request $request, $karyawanId)
     {
         $bulan = (int)$request->input('bulan', now()->month);
         $tahun = (int)$request->input('tahun', now()->year);
         $karyawan = Karyawan::findOrFail($karyawanId);
-        $this->syncSnapshot($karyawan, $bulan, $tahun, ['keterangan' => 'Dikunci manual']);
-        return redirect()->back()->with('success', "Payroll " . $karyawan->nama . " terkunci.");
+        
+        $this->syncSnapshot($karyawan, $bulan, $tahun, [
+            'keterangan' => 'Dikunci manual pada ' . now()->format('d/m/Y H:i')
+        ]);
+        
+        return redirect()->back()->with('success', "Payroll " . $karyawan->nama . " berhasil dikunci.");
     }
 
-    public function slipSaya() { return view('karyawan.slip-gaji'); }
-    public function export() { return redirect()->back()->with('info', 'Fitur export dikembangkan.'); }
+    /**
+     * Halaman Slip Gaji untuk Karyawan (Self Service)
+     */
+    public function slipSaya() 
+    { 
+        return view('karyawan.slip-gaji'); 
+    }
+
+    /**
+     * Fitur Export Data Payroll
+     */
+    public function export() 
+    { 
+        return redirect()->back()->with('info', 'Fitur export sedang dikembangkan.'); 
+    }
 }

@@ -8,8 +8,9 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
-     * Membuat tabel karyawans dengan sinkronisasi penuh terhadap form registrasi CDI,
-     * sistem Payroll berbasis Periode (Januari, Februari, dst), dan Digital ID Card.
+     * * Tabel 'karyawans' ini dirancang sebagai sumber data tunggal (Single Source of Truth)
+     * yang menyinkronkan data dari Form Registrasi CDI, Digital ID Card, 
+     * hingga parameter Master untuk Sistem Payroll Bulanan.
      */
     public function up(): void
     {
@@ -41,19 +42,20 @@ return new class extends Migration
             // Status: tetap, kontrak, magang_kampus, magang_mandiri
             $table->string('status'); 
             
-            // Asal Kampus/Sekolah/Instansi
+            // Asal Kampus/Sekolah/Instansi (Terutama untuk status magang)
             $table->string('instansi')->nullable(); 
             
             /**
              * Relasi ke tabel divisis (Foreign Key)
              * Menghubungkan karyawan dengan departemennya.
-             * onDelete('set null') memastikan jika divisi dihapus, data karyawan tidak ikut terhapus.
+             * onDelete('set null') memastikan jika divisi dihapus, data karyawan tetap ada.
              */
             $table->foreignId('divisi_id')
                   ->nullable()
                   ->constrained('divisis')
                   ->onDelete('set null'); 
             
+            // Jabatan mengikuti key yang ada di JSON daftar_jabatan pada tabel divisis
             $table->string('jabatan')->nullable(); 
             $table->date('tanggal_masuk')->nullable();
             
@@ -72,16 +74,16 @@ return new class extends Migration
             $table->string('pendidikan_terakhir')->nullable(); 
             $table->string('status_pendidikan')->nullable();   
             
-            // Digunakan untuk kalkulasi Tunjangan Keluarga/Tanggungan
+            // Jumlah orang yang ditanggung (Digunakan untuk kalkulasi Tunjangan Keluarga)
             $table->integer('jumlah_tanggungan')->default(0);
 
-            /** * NOMINAL TUNJANGAN PER TANGGUNGAN (DEFAULT / MASTER)
-             * Menggunakan decimal(15,2) agar akurat untuk perhitungan uang.
-             * Menyimpan nilai rupiah per kepala saat ini sebagai data master.
+            /** * NOMINAL TUNJANGAN PER TANGGUNGAN (MASTER VALUE)
+             * Menyimpan nilai rupiah per 1 jiwa sebagai acuan master.
+             * Nilai ini akan di-snapshot ke tabel payroll_histories setiap bulannya.
              */
             $table->decimal('tunjangan_per_tanggungan', 15, 2)->default(0);
 
-            // Path file bukti (Kartu Keluarga / Surat Nikah)
+            // Path file bukti (Scan KK / Surat Nikah) untuk validasi tunjangan
             $table->string('bukti_tanggungan')->nullable();    
             
             // --- 06 SISTEM IDENTITAS DIGITAL & FINANSIAL ---
@@ -89,31 +91,38 @@ return new class extends Migration
             $table->string('barcode_token')->unique(); 
             
             /** * GAJI POKOK (MASTER VALUE)
-             * Menyimpan nilai Gaji Pokok karyawan (Rate dasar individu).
-             * Digunakan sebagai acuan default saat generate data payroll bulanan di tabel payroll_histories.
+             * Menyimpan nilai Gaji Pokok Individu (Rate dasar diluar gaji jabatan).
+             * Digunakan sebagai acuan default saat generate data payroll bulanan.
              */
             $table->decimal('gaji_pokok', 15, 2)->default(0); 
             
-            // Path file foto profil (storage/app/public/karyawan/foto/...)
+            // Path file foto profil (Simpan di storage/app/public/karyawan/foto/...)
             $table->string('foto')->nullable(); 
             
             $table->timestamps();
 
-            // Indexing tambahan untuk performa pencarian
+            /*
+            |--------------------------------------------------------------------------
+            | INDEXING
+            |--------------------------------------------------------------------------
+            | Menambahkan index pada kolom yang sering digunakan dalam pencarian/filter
+            | untuk mengoptimalkan performa database.
+            */
             $table->index('nama');
             $table->index('status');
+            $table->index('nip');
         });
     }
 
     /**
      * Reverse the migrations.
-     * Menghapus tabel jika dilakukan rollback secara aman.
+     * Menghapus tabel secara bersih termasuk pelepasan foreign key.
      */
     public function down(): void
     {
-        // Lepas foreign key constraint terlebih dahulu agar tidak error saat penghapusan tabel
         if (Schema::hasTable('karyawans')) {
             Schema::table('karyawans', function (Blueprint $table) {
+                // Lepas foreign key constraint terlebih dahulu
                 if (Schema::hasColumn('karyawans', 'divisi_id')) {
                     $table->dropForeign(['divisi_id']);
                 }

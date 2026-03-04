@@ -33,23 +33,30 @@ return new class extends Migration
             | Tipe data decimal(15,2) digunakan untuk akurasi nilai mata uang.
             */
             
-            // Tab: Gaji Pokok Individu
+            // Tab: Gaji Pokok Individu (Snapshot gaji_pokok dari tabel karyawans)
             $table->decimal('gaji_pokok_nominal', 15, 2)->default(0);
             
-            // Tab: Gaji Per Jabatan (Snapshot Gaji Divisi saat itu)
+            // Tab: Gaji Per Jabatan (Snapshot Gaji dari JSON daftar_jabatan di tabel divisis)
             $table->decimal('gaji_divisi_snapshot', 15, 2)->default(0);
             
-            // Tab: Rate Per Jam (Snapshot Rate Absensi)
+            // Tab: Rate Per Jam (Snapshot Rate Absensi Global saat periode tersebut)
             $table->decimal('rate_absensi_per_jam', 15, 2)->default(0);
             
-            // Tab: Tunjangan Keluarga (Parameter rupiah per 1 jiwa)
+            // Tab: Tunjangan Keluarga (Parameter rupiah per 1 jiwa tanggungan)
             $table->decimal('tunjangan_per_tanggungan', 15, 2)->default(0);
+
+            /**
+             * PERUBAHAN TERBARU: Bonus dan Potongan
+             * Kolom ini digunakan untuk menyimpan nilai input dinamis per karyawan per bulan.
+             */
+            $table->decimal('bonus_tambahan', 15, 2)->default(0); // Untuk Bonus/Insentif
+            $table->decimal('potongan_gaji', 15, 2)->default(0);  // Untuk Kasbon/Denda/Potongan
 
             // 3. Data Tambahan untuk Audit
             // Menyimpan jumlah tanggungan saat bulan tersebut untuk keperluan histori yang akurat
             $table->integer('jumlah_tanggungan_snapshot')->default(0); 
             
-            // Kolom keterangan jika ada catatan khusus per periode
+            // Kolom keterangan jika ada catatan khusus per periode (Misal: "Bonus Lembur Proyek A")
             $table->text('keterangan')->nullable(); 
             
             $table->timestamps();

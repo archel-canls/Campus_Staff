@@ -18,15 +18,19 @@ class PayrollHistory extends Model
     /**
      * Atribut yang dapat diisi secara massal.
      * Mencakup semua parameter penggajian yang bersifat snapshot per periode.
+     * UPDATED: Menambahkan bonus_tambahan dan potongan_gaji.
      */
     protected $fillable = [
         'karyawan_id',
         'bulan',
         'tahun',
-        'gaji_pokok_nominal',      // Snapshot Tab: Gaji Pokok Individu
-        'gaji_divisi_snapshot',    // Snapshot Tab: Gaji Per Jabatan
-        'rate_absensi_per_jam',    // Snapshot Tab: Rate Per Jam
-        'tunjangan_per_tanggungan', // Snapshot Tab: Tunjangan Keluarga
+        'gaji_pokok_nominal',        // Snapshot Tab: Gaji Pokok Individu
+        'gaji_divisi_snapshot',      // Snapshot Tab: Gaji Per Jabatan (dari Divisi)
+        'rate_absensi_per_jam',      // Snapshot Tab: Rate Per Jam
+        'tunjangan_per_tanggungan',   // Snapshot Tab: Tunjangan Keluarga (Per Jiwa)
+        'bonus_tambahan',            // Input Dinamis: Bonus/Insentif
+        'potongan_gaji',             // Input Dinamis: Potongan/Kasbon/Denda
+        'jumlah_tanggungan_snapshot', // Snapshot jumlah tanggungan saat periode ini
         'keterangan'
     ];
 
@@ -38,8 +42,11 @@ class PayrollHistory extends Model
         'gaji_divisi_snapshot' => 'decimal:2',
         'rate_absensi_per_jam' => 'decimal:2',
         'tunjangan_per_tanggungan' => 'decimal:2',
+        'bonus_tambahan' => 'decimal:2',
+        'potongan_gaji' => 'decimal:2',
         'bulan' => 'integer',
         'tahun' => 'integer',
+        'jumlah_tanggungan_snapshot' => 'integer',
     ];
 
     /*
@@ -63,26 +70,47 @@ class PayrollHistory extends Model
     */
 
     /**
-     * Menghitung total tunjangan keluarga berdasarkan jumlah tanggungan karyawan
-     * dikalikan nilai snapshot tunjangan per jiwa pada periode ini.
+     * Menghitung total tunjangan keluarga.
+     * Menggunakan jumlah_tanggungan_snapshot jika tersedia, 
+     * jika tidak (data lama) maka fallback ke data master karyawan.
      */
     public function getTotalTunjanganKeluargaAttribute()
     {
-        $jumlahTanggungan = $this->karyawan->jumlah_tanggungan ?? 0;
-        return $this->tunjangan_per_tanggungan * $jumlahTanggungan;
+        $jumlah = $this->jumlah_tanggungan_snapshot > 0 
+                  ? $this->jumlah_tanggungan_snapshot 
+                  : ($this->karyawan->jumlah_tanggungan ?? 0);
+
+        return $this->tunjangan_per_tanggungan * $jumlah;
     }
 
     /**
      * Menghitung Take Home Pay (THP) murni dari data snapshot history ini.
-     * Catatan: total_jam_kerja biasanya diambil dari tabel absensi di periode terkait.
+     * UPDATED: Sekarang menghitung Bonus Tambahan dan Potongan Gaji.
+     * * Rumus: (Gaji Pokok + Gaji Jabatan + Bonus Absensi + Tunjangan Keluarga + Bonus Lainnya) - Potongan
+     * * @param float|int $totalJamKerja
+     * @return float
      */
     public function hitungTotalGaji($totalJamKerja = 0)
     {
         $bonusAbsensi = $totalJamKerja * $this->rate_absensi_per_jam;
         $totalTunjangan = $this->total_tunjangan_keluarga;
 
-        return $this->gaji_pokok_nominal + $this->gaji_divisi_snapshot + $bonusAbsensi + $totalTunjangan;
+        // Total Pendapatan
+        $pendapatan = $this->gaji_pokok_nominal + 
+                      $this->gaji_divisi_snapshot + 
+                      $bonusAbsensi + 
+                      $totalTunjangan + 
+                      $this->bonus_tambahan;
+
+        // Total Akhir (Pendapatan - Potongan)
+        return $pendapatan - $this->potongan_gaji;
     }
+
+    /*
+    |--------------------------------------------------------------------------
+    | SCOPES
+    |--------------------------------------------------------------------------
+    */
 
     /**
      * Scope untuk mempermudah filter berdasarkan periode di Controller.

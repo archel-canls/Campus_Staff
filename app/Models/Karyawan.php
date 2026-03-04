@@ -14,7 +14,7 @@ use Carbon\Carbon;
  * Model Karyawan
  * Struktur data sinkron dengan Form Registrasi CDI, Migration, Payroll System, dan Digital ID Card.
  * UPDATE: Mendukung histori penggajian dinamis per bulan dan relasi divisi yang solid.
- * * @property \App\Models\Divisi|null $divisi
+ * @property \App\Models\Divisi|null $divisi
  */
 class Karyawan extends Model
 {
@@ -152,6 +152,7 @@ class Karyawan extends Model
 
     /**
      * Relasi Histori Penggajian Per Bulan (Snapshot).
+     * Mencakup data gaji pokok, tunjangan, bonus, dan potongan pada periode terkait.
      */
     public function payrollHistories(): HasMany
     {
@@ -174,7 +175,7 @@ class Karyawan extends Model
 
     /**
      * Logika Cerdas: Ambil Gaji Pokok dari Histori Bulan Terkait.
-     * Jika histori tidak ditemukan, ambil dari Gaji Pokok Master.
+     * Jika histori tidak ditemukan, ambil dari Gaji Pokok Master di profil.
      */
     public function getGajiByPeriode($bulan, $tahun)
     {
@@ -259,6 +260,8 @@ class Karyawan extends Model
     /*
     |--------------------------------------------------------------------------
     | HELPERS (Logika Bisnis)
+    |--------------------------------------------------------------------------
+    | Digunakan untuk validasi status atau filter di Controller/View.
     |--------------------------------------------------------------------------
     */
 
