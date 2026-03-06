@@ -10,11 +10,12 @@ use App\Models\Absensi;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class PayrollController extends Controller
 {
     /**
-     * Menampilkan Halaman Utama Payroll.
+     * Menampilkan Halaman Utama Payroll (Sisi Admin).
      * Mengintegrasikan data Master Karyawan dengan Snapshot History Bulanan.
      */
     public function index(Request $request)
@@ -110,9 +111,71 @@ class PayrollController extends Controller
     }
 
     /**
-     * UPDATE BONUS:
-     * Mendukung multi-input nominal & keterangan dengan format mendetail (Nominal) Keterangan.
+     * Bagian Karyawan: Menampilkan Slip Gaji & Riwayat (Full Details).
      */
+    public function slipSaya(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user->karyawan_id) {
+            return redirect()->back()->with('error', 'Profil karyawan tidak terhubung dengan akun Anda.');
+        }
+
+        $karyawan = Karyawan::with(['divisi', 'payrollHistories'])->findOrFail($user->karyawan_id);
+        
+        // Filter Periode (Default bulan & tahun sekarang)
+        $bulan = (int) $request->get('bulan', now()->month);
+        $tahun = (int) $request->get('tahun', now()->year);
+
+        // 1. Ambil Snapshot data untuk bulan yang dipilih
+        $history = $karyawan->payrollHistories()
+            ->where('bulan', $bulan)
+            ->where('tahun', $tahun)
+            ->first();
+
+        // 2. Jika tidak ada history (admin belum sinkron/lock), buat objek temporary dari master karyawan
+        if (!$history) {
+            $history = new \App\Models\PayrollHistory([
+                'bulan' => $bulan,
+                'tahun' => $tahun,
+                'gaji_pokok_nominal' => $karyawan->gaji_pokok,
+                'gaji_divisi_snapshot' => $karyawan->divisi ? $karyawan->divisi->getGajiJabatan($karyawan->jabatan) : 0,
+                'rate_absensi_per_jam' => $karyawan->hourly_rate ?? 25000,
+                'tunjangan_per_tanggungan' => $karyawan->tunjangan_per_tanggungan ?? 0,
+                'jumlah_tanggungan_snapshot' => $karyawan->jumlah_tanggungan,
+                'bonus_tambahan' => 0,
+                'potongan_gaji' => 0,
+                'keterangan' => 'Estimasi (Belum diverifikasi admin)'
+            ]);
+        }
+
+        // 3. Hitung Total Jam Kerja dari tabel Absensi untuk periode ini
+        $absensis = Absensi::where('karyawan_id', $karyawan->id)
+            ->whereMonth('jam_masuk', $bulan)
+            ->whereYear('jam_masuk', $tahun)
+            ->get();
+
+        $totalMenit = 0;
+        foreach ($absensis as $a) {
+            if ($a->jam_masuk && $a->jam_keluar) {
+                $totalMenit += Carbon::parse($a->jam_masuk)->diffInMinutes(Carbon::parse($a->jam_keluar));
+            }
+        }
+        $totalJamKerja = floor($totalMenit / 60);
+
+        // Hitung Grand Total menggunakan logic Model PayrollHistory
+        $grandTotal = $history->hitungTotalGaji($totalJamKerja);
+
+        // 4. Ambil Semua Riwayat Payroll untuk tabel history bawah
+        $allHistories = $karyawan->payrollHistories()
+            ->orderBy('tahun', 'desc')
+            ->orderBy('bulan', 'desc')
+            ->get();
+
+        return view('karyawan.slip_gaji', compact(
+            'karyawan', 'history', 'totalJamKerja', 'grandTotal', 'bulan', 'tahun', 'allHistories'
+        ));
+    }
+
     public function updateBonus(Request $request)
     {
         $request->validate([
@@ -177,10 +240,6 @@ class PayrollController extends Controller
         }
     }
 
-    /**
-     * UPDATE POTONGAN:
-     * Mendukung multi-input nominal & keterangan dengan format mendetail (Nominal) Keterangan.
-     */
     public function updatePotongan(Request $request)
     {
         $request->validate([
@@ -241,14 +300,10 @@ class PayrollController extends Controller
             return back()->with('success', 'Potongan berhasil dicatat secara mendetail.');
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->with('error', 'Gagal update potonogan: ' . $e->getMessage());
+            return back()->with('error', 'Gagal update potongan: ' . $e->getMessage());
         }
     }
 
-    /**
-     * MENGHAPUS SATU ITEM BONUS/POTONGAN SPESIFIK:
-     * Menghapus item berdasarkan index string agar nominal total ikut berkurang.
-     */
     public function deleteItem(Request $request)
     {
         $request->validate([
@@ -274,17 +329,13 @@ class PayrollController extends Controller
                 $items = explode(' | ', $history->$fieldKet);
                 
                 if (isset($items[$request->index])) {
-                    // Ekstrak nominal dari string "(1.000.000) Keterangan"
                     preg_match('/\((.*?)\)/', $items[$request->index], $matches);
                     if (isset($matches[1])) {
                         $nominalHapus = (float) str_replace('.', '', $matches[1]);
                         $history->$fieldNom -= $nominalHapus;
                     }
 
-                    // Hapus item dari array
                     unset($items[$request->index]);
-                    
-                    // Update string keterangan
                     $history->$fieldKet = count($items) > 0 ? implode(' | ', $items) : null;
                     $history->save();
                 }
@@ -298,9 +349,6 @@ class PayrollController extends Controller
         }
     }
 
-    /**
-     * Update Gaji Pokok / Hourly Rate Individu.
-     */
     public function update(Request $request)
     {
         $request->validate([
@@ -334,9 +382,6 @@ class PayrollController extends Controller
         }
     }
 
-    /**
-     * Update Parameter Tunjangan Keluarga Global.
-     */
     public function store(Request $request)
     {
         $request->validate([
@@ -364,9 +409,6 @@ class PayrollController extends Controller
         }
     }
 
-    /**
-     * Update Global Rate Absensi.
-     */
     public function updateRateAbsensi(Request $request)
     {
         $request->validate([
@@ -395,9 +437,6 @@ class PayrollController extends Controller
         }
     }
 
-    /**
-     * Update Massal Gaji Jabatan per Divisi.
-     */
     public function updateGajiJabatan(Request $request)
     {
         $request->validate([
@@ -437,9 +476,6 @@ class PayrollController extends Controller
         }
     }
 
-    /**
-     * Update Jumlah Tanggungan Individu.
-     */
     public function updateTanggungan(Request $request)
     {
         $request->validate([
@@ -464,9 +500,6 @@ class PayrollController extends Controller
         }
     }
 
-    /**
-     * AJAX: Mengambil detail bonus/potongan yang sudah ada untuk list hapus
-     */
     public function getDetails(Request $request)
     {
         $query = Karyawan::query();
@@ -486,7 +519,6 @@ class PayrollController extends Controller
             ->where('tahun', $request->tahun)
             ->first();
 
-        // Memecah string "(10.000) Ket | (20.000) Ket" menjadi array
         $parse = function($string) {
             if (!$string) return [];
             return array_map('trim', explode('|', $string));
@@ -498,9 +530,6 @@ class PayrollController extends Controller
         ]);
     }
 
-    /**
-     * MENGHAPUS / RESET PAYROLL PER PERIODE (Agar kembali ke Draft)
-     */
     public function destroy(Request $request)
     {
         $request->validate([
@@ -525,9 +554,6 @@ class PayrollController extends Controller
         }
     }
 
-    /**
-     * Mengunci (Lock) Seluruh Data Payroll Periode Terpilih.
-     */
     public function lockAll(Request $request)
     {
         $bulan = (int) $request->input('bulan');
@@ -547,9 +573,6 @@ class PayrollController extends Controller
         }
     }
 
-    /**
-     * Helper Utama Sinkronisasi Data Master ke Snapshot.
-     */
     private function syncSnapshot($karyawan, $bulan, $tahun, $overrides = [])
     {
         $existing = PayrollHistory::where([
@@ -597,11 +620,6 @@ class PayrollController extends Controller
         ]);
         
         return redirect()->back()->with('success', "Payroll " . $karyawan->nama . " berhasil dikunci.");
-    }
-
-    public function slipSaya() 
-    { 
-        return view('karyawan.slip-gaji'); 
     }
 
     public function export() 

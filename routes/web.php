@@ -14,9 +14,8 @@ use Illuminate\Support\Facades\Auth;
 | Web Routes
 |--------------------------------------------------------------------------
 |
-| Di sini adalah tempat di mana Anda dapat mendaftarkan rute web untuk aplikasi.
-| Rute-rute ini dimuat oleh RouteServiceProvider dan semuanya akan
-| ditetapkan ke grup middleware "web".
+| File ini mengatur seluruh alur navigasi aplikasi CDI.
+| Semua rute di sini telah dioptimalkan untuk mendukung sistem Snapshot Payroll.
 |
 */
 
@@ -144,16 +143,18 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
         // Update Potongan Gaji (Individu/Grup)
         Route::post('/update-potongan', [PayrollController::class, 'updatePotongan'])->name('payroll.update_potongan');
 
-        // Menghapus Item Bonus/Potongan Tertentu (Misal: menghapus b1 saja)
+        // Menghapus Item Bonus/Potongan Tertentu
         Route::post('/delete-item', [PayrollController::class, 'deleteItem'])->name('payroll.delete_item');
 
         // Update Jumlah Tanggungan Keluarga Individu
         Route::post('/update-tanggungan', [PayrollController::class, 'updateTanggungan'])->name('payroll.update_tanggungan');
 
         /**
-         * FINALISASI & EXPORT
+         * FINALISASI, LOCKING & EXPORT
          */
+        // RUTE PENTING: Untuk mengunci/simpan snapshot payroll individu
         Route::post('/lock/{id}', [PayrollController::class, 'lockPayroll'])->name('payroll.lock');
+        
         Route::post('/lock-all', [PayrollController::class, 'lockAll'])->name('payroll.lock_all');
         Route::delete('/destroy', [PayrollController::class, 'destroy'])->name('payroll.destroy'); // Reset Periode
         Route::get('/export', [PayrollController::class, 'export'])->name('payroll.export');
@@ -168,13 +169,8 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
     Route::resource('divisi', DivisiController::class);
     
     Route::prefix('divisi-action')->name('divisi.')->group(function() {
-        // Menambahkan anggota ke divisi
         Route::post('/{id}/tambah-anggota', [DivisiController::class, 'tambahAnggota'])->name('tambah-anggota');
-        
-        // Melepaskan anggota dari divisi
         Route::post('/hapus-anggota/{karyawan_id}', [DivisiController::class, 'hapusAnggota'])->name('hapus-anggota');
-        
-        // Update Struktur Jabatan: kuota, nama jabatan, dan nominal gaji via JSON
         Route::patch('/{id}/update-jabatan', [DivisiController::class, 'updateJabatan'])->name('update-jabatan');
     });
 });
@@ -214,4 +210,5 @@ Route::middleware(['auth', 'role:karyawan'])->prefix('karyawan')->group(function
 
     // Slip Gaji Bulanan (Akses Mandiri Karyawan)
     Route::get('/slip-gaji', [PayrollController::class, 'slipSaya'])->name('karyawan.slip-gaji');
+    Route::get('/payroll-history', [PayrollController::class, 'slipSaya'])->name('karyawan.payroll');
 });

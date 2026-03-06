@@ -24,12 +24,16 @@ class AbsensiController extends Controller
 
     /**
      * Memproses data dari scanner via AJAX (Admin).
+     * UPDATED: Lokasi tetap dicatat untuk pemantauan, namun pembatasan radius dihapus.
+     * Karyawan kini bisa absen dari mana saja (WFH/Tugas Luar).
      */
     public function submit(Request $request)
     {
         $request->validate([
             'nip'  => 'required|string',
-            'tipe' => 'nullable|in:masuk,keluar', 
+            'tipe' => 'nullable|in:masuk,keluar',
+            'lat'  => 'nullable|numeric',
+            'lng'  => 'nullable|numeric',
         ]);
 
         try {
@@ -38,7 +42,7 @@ class AbsensiController extends Controller
              * Mencari karyawan berdasarkan:
              * 1. NIP murni
              * 2. Barcode Token apa adanya
-             * 3. Barcode Token dengan prefix 'BC-' (untuk menghandle user registrasi baru)
+             * 3. Barcode Token dengan prefix 'BC-'
              */
             $karyawan = Karyawan::where('nip', $request->nip)
                                 ->orWhere('barcode_token', $request->nip)
@@ -51,6 +55,10 @@ class AbsensiController extends Controller
                     'message' => 'Identitas [' . $request->nip . '] tidak terdaftar!'
                 ], 404);
             }
+
+            // --- PENCATATAN LOKASI (TANPA PEMBATASAN RADIUS) ---
+            // Logika validasi $distance > $radiusMeter telah dihapus agar bisa absen di mana saja.
+            // Koordinat $request->lat dan $request->lng akan langsung disimpan ke database.
 
             $jamSekarang = Carbon::now();
             $hariIni = Carbon::today();
@@ -83,10 +91,13 @@ class AbsensiController extends Controller
                     $keterangan = "Terlambat ({$menit} Menit)";
                 }
 
+                // Simpan data absensi beserta lokasi GPS yang dikirim perangkat
                 Absensi::create([
                     'karyawan_id' => $karyawan->id,
                     'jam_masuk'   => $jamSekarang,
                     'keterangan'  => $keterangan,
+                    'latitude'    => $request->lat, 
+                    'longitude'   => $request->lng,
                 ]);
 
                 return response()->json([
@@ -96,7 +107,8 @@ class AbsensiController extends Controller
                         'nama'   => $karyawan->nama,
                         'nip'    => $karyawan->nip,
                         'waktu'  => $jamSekarang->format('H:i:s'),
-                        'status' => $keterangan
+                        'status' => $keterangan,
+                        'info'   => 'Lokasi berhasil dicatat'
                     ]
                 ]);
             }
@@ -140,13 +152,26 @@ class AbsensiController extends Controller
     }
 
     /**
+     * Helper: Hitung jarak antara dua koordinat (Haversine Formula).
+     * Tetap dipertahankan jika sewaktu-waktu dibutuhkan kembali untuk reporting.
+     */
+    private function calculateDistance($lat1, $lon1, $lat2, $lon2)
+    {
+        $earthRadius = 6371000; // meter
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLon = deg2rad($lon2 - $lon1);
+        $a = sin($dLat/2) * sin($dLat/2) + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon/2) * sin($dLon/2);
+        $c = 2 * atan2(sqrt($a), sqrt(1-$a));
+        return $earthRadius * $c;
+    }
+
+    /**
      * Menampilkan riwayat absensi & perizinan (Halaman utama log admin).
      */
     public function riwayat()
     {
         $today = Carbon::today();
 
-        // 1. Ambil semua karyawan beserta absensi hari ini & perizinan aktif hari ini
         $allKaryawan = Karyawan::with(['absensis' => function($q) use ($today) {
             $q->whereDate('jam_masuk', $today);
         }, 'perizinans' => function($q) use ($today) {
@@ -155,7 +180,6 @@ class AbsensiController extends Controller
               ->whereDate('tanggal_selesai', '>=', $today);
         }])->get();
 
-        // 2. Ambil pengajuan izin yang statusnya pending
         $perizinanPending = Perizinan::where('status', 'pending')
                             ->with('karyawan')
                             ->latest()
@@ -163,7 +187,6 @@ class AbsensiController extends Controller
         
         $pendingCount = $perizinanPending->count();
 
-        // 3. Ambil riwayat konfirmasi terakhir (selain pending)
         $historyPerizinan = Perizinan::where('status', '!=', 'pending')
                             ->with('karyawan')
                             ->latest()
@@ -183,7 +206,6 @@ class AbsensiController extends Controller
      */
     public function konfirmasiIzin($id, $status)
     {
-        // Pastikan hanya admin yang bisa akses
         if (Auth::user()->role !== 'admin') {
             abort(403);
         }
@@ -193,7 +215,6 @@ class AbsensiController extends Controller
             $izin = Perizinan::findOrFail($id);
             $izin->update(['status' => $status]);
 
-            // Jika disetujui, dan hari ini masuk dalam range izin, buatkan record absensi otomatis
             if ($status === 'disetujui') {
                 $today = Carbon::today();
                 $mulai = Carbon::parse($izin->tanggal_mulai)->startOfDay();
@@ -258,7 +279,6 @@ class AbsensiController extends Controller
 
         $now = Carbon::now();
         
-        // Total hadir bulan ini (Hadir/Terlambat, bukan Izin)
         $totalHadir = Absensi::where('karyawan_id', $karyawan->id)
             ->whereMonth('jam_masuk', $now->month)
             ->whereYear('jam_masuk', $now->year)
@@ -274,7 +294,6 @@ class AbsensiController extends Controller
             ->take(7)
             ->get();
 
-        // Hitungan gaji sederhana
         $insentifHarian = 25000;
         $uangMakan = 15000;
         $gajiPokok = $karyawan->gaji_pokok ?? 0;
@@ -324,7 +343,6 @@ class AbsensiController extends Controller
         $selesai = Carbon::parse($request->tanggal_selesai);
         $lamaHari = $mulai->diffInDays($selesai) + 1;
 
-        // Aturan: Jika lebih dari 3 hari, wajib upload PDF
         if ($lamaHari > 3 && !$request->hasFile('lampiran_pdf')) {
             return back()->with('error', 'Izin lebih dari 3 hari wajib melampirkan dokumen PDF.')->withInput();
         }

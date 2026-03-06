@@ -10,17 +10,23 @@ class Absensi extends Model
 {
     use HasFactory;
 
+    /**
+     * Nama tabel di database.
+     */
     protected $table = 'absensis';
 
     /**
      * Kolom yang dapat diisi secara mass-assignment.
      * jam_keluar WAJIB ada di sini agar fitur Scan Keluar berfungsi.
+     * UPDATE: Menambahkan latitude dan longitude untuk melacak lokasi absen.
      */
     protected $fillable = [
         'karyawan_id',
         'jam_masuk',
         'jam_keluar',
-        'keterangan'
+        'keterangan',
+        'latitude',
+        'longitude'
     ];
 
     /**
@@ -51,7 +57,7 @@ class Absensi extends Model
 
     /**
      * Accessor: Menentukan warna status berdasarkan keterangan/kondisi.
-     * Berguna untuk label/badge di halaman Riwayat atau Laporan.
+     * Berguna untuk menentukan warna label/badge secara otomatis di UI.
      */
     public function getStatusColorAttribute()
     {
@@ -67,7 +73,8 @@ class Absensi extends Model
     }
 
     /**
-     * Helper: Menghitung total jam kerja jika sudah absen keluar.
+     * Helper: Menghitung selisih waktu antara jam masuk dan jam keluar.
+     * Menghasilkan format string seperti "08 jam 30 menit".
      */
     public function getDurasiKerjaAttribute()
     {
@@ -75,5 +82,17 @@ class Absensi extends Model
             return $this->jam_masuk->diff($this->jam_keluar)->format('%H jam %I menit');
         }
         return '-';
+    }
+
+    /**
+     * Helper: Menghasilkan link Google Maps berdasarkan koordinat GPS yang tersimpan.
+     * Memungkinkan Admin untuk mengklik link dan langsung melihat lokasi karyawan saat scan.
+     */
+    public function getGoogleMapsLinkAttribute()
+    {
+        if ($this->latitude && $this->longitude) {
+            return "https://www.google.com/maps?q={$this->latitude},{$this->longitude}";
+        }
+        return null;
     }
 }

@@ -159,6 +159,11 @@
                     <div class="text-left">
                         <h4 id="res-nama" class="text-base font-black text-cdi uppercase italic leading-none">Memproses...</h4>
                         <p id="res-nip" class="text-[10px] font-bold text-cdi-orange tracking-[0.2em] mt-1.5 uppercase">-</p>
+                        
+                        <p id="res-lokasi" class="text-[8px] font-bold text-slate-500 uppercase mt-1 leading-tight max-w-[200px]">
+                            <i class="fas fa-map-marker-alt text-cdi-orange"></i> Menjemput Lokasi...
+                        </p>
+
                         <div class="flex items-center mt-2 space-x-3">
                             <span class="text-[9px] font-black text-slate-400 uppercase"><i class="far fa-clock mr-1"></i> <span id="res-waktu">00:00</span></span>
                             <span id="res-tipe-badge" class="text-[8px] font-black px-2 py-0.5 rounded uppercase">STATUS</span>
@@ -244,23 +249,72 @@
             }
         }
 
-        // Submission Logic
+        /**
+         * REVERSE GEOCODING FUNCTION
+         * Mengambil Nama Negara dan Alamat Detail dari Koordinat
+         */
+        async function getAddressDetail(lat, lng) {
+            if (!lat || !lng) return "Lokasi tidak terdeteksi";
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
+                const data = await response.json();
+                
+                // Format: Country, City, Road/Sub-district
+                const country = data.address.country || "";
+                const city = data.address.city || data.address.town || data.address.state || "";
+                const road = data.address.road || data.address.suburb || "";
+                
+                return `${country}, ${city}, ${road}`.toUpperCase();
+            } catch (error) {
+                return "Koordinat: " + lat.toFixed(4) + ", " + lng.toFixed(4);
+            }
+        }
+
+        /**
+         * Submission Logic with Geolocation
+         */
         function submitAbsensi(nip, mode) {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    async (position) => {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        // Dapatkan nama lokasi dulu
+                        const locationName = await getAddressDetail(lat, lng);
+                        sendData(nip, mode, lat, lng, locationName);
+                    },
+                    (error) => {
+                        console.warn("Geolocation failed or denied.");
+                        sendData(nip, mode, null, null, "Lokasi Offline/Ditolak");
+                    },
+                    { enableHighAccuracy: true, timeout: 5000 }
+                );
+            } else {
+                sendData(nip, mode, null, null, "Geolocation Not Supported");
+            }
+        }
+
+        function sendData(nip, mode, lat, lng, locationName) {
             fetch("{{ route('absensi.submit') }}", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "X-CSRF-TOKEN": "{{ csrf_token() }}" },
-                body: JSON.stringify({ nip: nip, tipe: mode })
+                body: JSON.stringify({ 
+                    nip: nip, 
+                    tipe: mode,
+                    lat: lat,
+                    lng: lng
+                })
             })
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'success') {
                     document.getElementById('beep-success').play();
                     
-                    // Pastikan data yang diterima dari backend lengkap (nama, nip, waktu)
                     const resultData = {
                         nama: data.data.nama || 'User',
                         nip: data.data.nip || nip,
-                        waktu: data.data.waktu || new Date().toLocaleTimeString('id-ID')
+                        waktu: data.data.waktu || new Date().toLocaleTimeString('id-ID'),
+                        lokasi: locationName
                     };
 
                     showResult(resultData, mode);
@@ -289,10 +343,10 @@
             const card = document.getElementById('last-scan-card');
             card.classList.remove('hidden');
             
-            // Pengaman agar tidak undefined
             document.getElementById('res-nama').innerText = data.nama || 'UNKNOWN';
             document.getElementById('res-nip').innerText = data.nip || '000000';
             document.getElementById('res-waktu').innerText = data.waktu || '--:--';
+            document.getElementById('res-lokasi').innerHTML = `<i class="fas fa-map-marker-alt text-cdi-orange"></i> ${data.lokasi}`;
             
             const badge = document.getElementById('res-tipe-badge');
             const iconBg = document.getElementById('res-icon-bg');
@@ -318,21 +372,23 @@
             const firstChar = data.nama ? data.nama.charAt(0) : '?';
             const logNama = data.nama || 'Unknown User';
             const logWaktu = data.waktu || '--:--';
+            const logLokasi = data.lokasi || '';
 
             const html = `
                 <div class="bg-white/5 border border-white/10 p-4 rounded-2xl flex items-center justify-between animate-pop">
                     <div class="flex items-center space-x-3">
-                        <div class="w-8 h-8 bg-white/10 rounded-lg flex items-center justify-center text-[10px] font-black text-white uppercase">${firstChar}</div>
+                        <div class="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center text-[12px] font-black text-white uppercase">${firstChar}</div>
                         <div class="text-left">
                             <p class="text-[10px] font-black uppercase leading-none text-white">${logNama}</p>
-                            <p class="text-[8px] font-bold text-white/40 uppercase mt-1">${logWaktu}</p>
+                            <p class="text-[7px] font-bold text-white/40 uppercase mt-1">
+                                <i class="fas fa-clock mr-1"></i>${logWaktu} • <i class="fas fa-location-arrow mr-1"></i>${logLokasi}
+                            </p>
                         </div>
                     </div>
                     <span class="text-[7px] font-black px-2 py-1 rounded border ${mode === 'masuk' ? 'border-green-500/50 text-green-400' : 'border-orange-500/50 text-orange-400'} uppercase">${mode}</span>
                 </div>`;
             container.insertAdjacentHTML('afterbegin', html);
             
-            // Batasi log maksimal 5 agar tidak memenuhi layar
             if (container.children.length > 5) {
                 container.removeChild(container.lastChild);
             }
