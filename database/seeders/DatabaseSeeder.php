@@ -1,11 +1,12 @@
 <?php
 
 namespace Database\Seeders;
- 
+
 use App\Models\User;
 use App\Models\Karyawan;
 use App\Models\Divisi;
 use App\Models\Absensi;
+use App\Models\PayrollHistory;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
@@ -16,17 +17,16 @@ class DatabaseSeeder extends Seeder
     /**
      * Seed the application's database.
      * Mengisi data awal untuk sistem management staff CDI secara lengkap.
-     * LOGIKA: Gaji pokok, divisi, absensi per jam, dan tunjangan dibuat BERBEDA tiap bulan.
      */
     public function run(): void
     {
         // Mendapatkan bulan berjalan untuk simulasi (Misal: 1 untuk Januari, 2 untuk Februari)
         $currentMonth = now()->month;
+        $currentYear = now()->year;
 
         // 1. BUAT DATA MASTER DIVISI (Gaji Divisi Berbeda tiap Bulan)
-        // Logika: Jika Februari, gaji standar jabatan naik/turun dibanding Januari
-        $itGaji = ($currentMonth == 2) ? 10000000 : 9000000; // Februari 10jt, Januari 9jt
-        $mktGaji = ($currentMonth == 2) ? 7000000 : 8500000;  // Februari 7jt, Januari 8.5jt
+        $itGaji = ($currentMonth == 2) ? 10000000 : 9000000; 
+        $mktGaji = ($currentMonth == 2) ? 7000000 : 8500000;  
 
         $masterDivisi = [
             [
@@ -89,29 +89,21 @@ class DatabaseSeeder extends Seeder
         }
 
         // 2. BUAT AKUN NON-KARYAWAN
-        User::updateOrCreate(
-            ['username' => 'admin'],
-            [
-                'name' => 'Administrator CDI',
-                'email' => 'admin@cdi.id',
-                'password' => Hash::make('password123'),
-                'role' => 'admin',
-                'karyawan_id' => null,
-            ]
-        );
+        User::updateOrCreate(['username' => 'admin'], [
+            'name' => 'Administrator CDI',
+            'email' => 'admin@cdi.id',
+            'password' => Hash::make('password123'),
+            'role' => 'admin',
+        ]);
 
-        User::updateOrCreate(
-            ['username' => 'scanner1'],
-            [
-                'name' => 'Mesin Scanner Lobby',
-                'email' => 'scanner@cdi.id',
-                'password' => Hash::make('password123'),
-                'role' => 'scanner',
-                'karyawan_id' => null,
-            ]
-        );
+        User::updateOrCreate(['username' => 'scanner1'], [
+            'name' => 'Mesin Scanner Lobby',
+            'email' => 'scanner@cdi.id',
+            'password' => Hash::make('password123'),
+            'role' => 'scanner',
+        ]);
 
-        // 3. DATA KARYAWAN (Dengan Logika Perubahan Gaji Individu tiap Bulan)
+        // 3. DATA KARYAWAN
         $dataKaryawan = [
             [
                 'nama' => 'Archel Arisandi',
@@ -136,6 +128,30 @@ class DatabaseSeeder extends Seeder
                 'tanggungan' => 2,
                 'gaji_custom_januari' => 2000000,
                 'gaji_custom_februari' => 3000000 
+            ],
+            [
+                'nama' => 'Reza Kurniawan', // Karyawan Spesifik Absensi
+                'username' => 'reza',
+                'nip' => '260219505004', 
+                'nik' => '3301234567890004',
+                'email' => 'reza@cdi.id',
+                'jk' => 'L',
+                'telepon' => '081299887766',
+                'tempat_lahir' => 'Jakarta',
+                'tgl_lahir' => '1998-10-15',
+                'divisi_nama' => 'IT Development',
+                'jabatan' => 'Senior Developer',
+                'status' => 'tetap',
+                'instansi' => 'PT. Citra Digital Indonesia',
+                'pendidikan' => 'S1 Sistem Informasi',
+                'status_pendidikan' => 'Lulus',
+                'alamat_ktp' => 'Jl. Merdeka No. 5, Jakarta',
+                'alamat_domisili' => 'Kost IT Elite, Semarang',
+                'emergency' => ['nama' => 'Ayah Reza', 'hub' => 'Ayah', 'telp' => '08122222222'],
+                'goldar' => 'B',
+                'tanggungan' => 1,
+                'gaji_custom_januari' => 1800000,
+                'gaji_custom_februari' => 2500000 
             ],
             [
                 'nama' => 'Budi Santoso',
@@ -187,83 +203,101 @@ class DatabaseSeeder extends Seeder
             ]
         ];
 
-        // 4. LOGIKA PERBEDAAN TUNJANGAN DAN ABSENSI PER JAM
-        $tunjanganPerKepala = ($currentMonth == 2) ? 300000 : 200000; // Februari 300k, Jan 200k
-
+        // 4. PROSES SEEDING KARYAWAN & RELASI
         foreach ($dataKaryawan as $data) {
             DB::beginTransaction();
             try {
                 $divisiId = $divisiIds[$data['divisi_nama']] ?? null;
+                $divisi = Divisi::find($divisiId);
                 
-                // Pilih Gaji Pokok Individu berdasarkan bulan running
-                $gajiFinal = ($currentMonth == 2) ? $data['gaji_custom_februari'] : $data['gaji_custom_januari'];
+                $gajiPokok = ($currentMonth == 2) ? $data['gaji_custom_februari'] : $data['gaji_custom_januari'];
+                $ratePerJam = ($currentMonth == 2) ? 30000 : 25000;
+                $tunjanganPerKepala = ($currentMonth == 2) ? 300000 : 200000;
 
-                // B. Simpan Profil Karyawan
+                // A. Simpan Profil Karyawan[cite: 25]
                 $karyawan = Karyawan::updateOrCreate(
                     ['nik' => $data['nik']], 
                     [
-                        'nama'                => $data['nama'],
-                        'nip'                 => $data['nip'],
-                        'tempat_lahir'        => $data['tempat_lahir'],
-                        'tanggal_lahir'       => $data['tgl_lahir'],
-                        'jenis_kelamin'       => $data['jk'],
-                        'golongan_darah'      => $data['goldar'],
-                        'alamat_ktp'          => $data['alamat_ktp'],
-                        'alamat_domisili'     => $data['alamat_domisili'],
-                        'telepon'             => $data['telepon'],
-                        'status'              => $data['status'],
-                        'instansi'            => $data['instansi'],
+                        'nama' => $data['nama'],
+                        'nip' => $data['nip'],
+                        'tempat_lahir' => $data['tempat_lahir'],
+                        'tanggal_lahir' => $data['tgl_lahir'],
+                        'jenis_kelamin' => $data['jk'],
+                        'golongan_darah' => $data['goldar'],
+                        'alamat_ktp' => $data['alamat_ktp'],
+                        'alamat_domisili' => $data['alamat_domisili'],
+                        'telepon' => $data['telepon'],
+                        'status' => $data['status'],
+                        'instansi' => $data['instansi'],
                         'pendidikan_terakhir' => $data['pendidikan'],
-                        'status_pendidikan'   => $data['status_pendidikan'],
-                        'divisi_id'           => $divisiId,
-                        'jabatan'             => $data['jabatan'],
-                        'tanggal_masuk'       => '2024-01-01',
-                        'emergency_1_nama'     => $data['emergency']['nama'],
+                        'status_pendidikan' => $data['status_pendidikan'],
+                        'divisi_id' => $divisiId,
+                        'jabatan' => $data['jabatan'],
+                        'tanggal_masuk' => '2024-01-01',
+                        'emergency_1_nama' => $data['emergency']['nama'],
                         'emergency_1_hubungan' => $data['emergency']['hub'],
-                        'emergency_1_telp'     => $data['emergency']['telp'],
-                        
-                        // Tunjangan berbeda tiap bulan
-                        'jumlah_tanggungan'        => $data['tanggungan'],
+                        'emergency_1_telp' => $data['emergency']['telp'],
+                        'jumlah_tanggungan' => $data['tanggungan'],
                         'tunjangan_per_tanggungan' => $tunjanganPerKepala, 
-                        
-                        'barcode_token'            => $data['nip'], 
-                        'gaji_pokok'               => $gajiFinal, // Gaji Pokok Individu berbeda
+                        'barcode_token' => $data['nip'], 
+                        'gaji_pokok' => $gajiPokok,
                     ]
                 );
 
-                // C. Simpan Akun User
+                // B. Simpan Akun User[cite: 23]
                 User::updateOrCreate(
                     ['username' => strtolower($data['username'])],
                     [
-                        'name'        => $karyawan->nama,
-                        'email'       => $data['email'],
-                        'password'    => Hash::make('password123'), 
-                        'role'        => 'karyawan',
+                        'name' => $karyawan->nama,
+                        'email' => $data['email'],
+                        'password' => Hash::make('password123'), 
+                        'role' => 'karyawan',
                         'karyawan_id' => $karyawan->id,
                     ]
                 );
 
-                // D. BUAT HISTORI ABSENSI (Agar total jam kerja & upah per jam berbeda)
-                // FIX: Menghapus angka 0 di depan angka 8 (08) untuk menghindari ParseError
-                
-                // Seed untuk Januari
-                for ($d = 1; $d <= 20; $d++) {
-                    Absensi::create([
-                        'karyawan_id' => $karyawan->id,
-                        'jam_masuk' => Carbon::create(2025, 1, $d, 8, 0, 0),
-                        'jam_keluar' => Carbon::create(2025, 1, $d, 16, 0, 0), // 8 jam
-                        'keterangan' => 'Hadir'
-                    ]);
-                }
+                // C. Buat Snapshot Histori Penggajian
+                PayrollHistory::updateOrCreate(
+                    ['karyawan_id' => $karyawan->id, 'bulan' => $currentMonth, 'tahun' => $currentYear],
+                    [
+                        'gaji_pokok_nominal' => $gajiPokok,
+                        'gaji_divisi_snapshot' => $divisi ? $divisi->getGajiJabatan($data['jabatan']) : 0,
+                        'rate_absensi_per_jam' => $ratePerJam,
+                        'tunjangan_per_tanggungan' => $tunjanganPerKepala,
+                        'jumlah_tanggungan_snapshot' => $data['tanggungan'],
+                        'bonus_tambahan' => 0,
+                        'potongan_gaji' => 0,
+                        'keterangan' => 'Generated by System Seeder'
+                    ]
+                );
 
-                // Seed untuk Februari
-                for ($d = 1; $d <= 20; $d++) {
-                    Absensi::create([
-                        'karyawan_id' => $karyawan->id,
-                        'jam_masuk' => Carbon::create(2025, 2, $d, 8, 0, 0),
-                        'jam_keluar' => Carbon::create(2025, 2, $d, 18, 0, 0), // 10 jam
-                        'keterangan' => 'Hadir'
-                    ]);
+                // D. LOGIKA ABSENSI KHUSUS REZA KURNIAWAN
+                if ($data['nama'] === 'Reza Kurniawan') {
+                    $yesterday = Carbon::yesterday();
+                    
+                    // Absen Kemarin (Jam 8 - 4)
+                    Absensi::updateOrCreate(
+                        [
+                            'karyawan_id' => $karyawan->id, 
+                            'jam_masuk' => $yesterday->copy()->setHour(8)->setMinute(0)->setSecond(0)
+                        ],
+                        [
+                            'jam_keluar' => $yesterday->copy()->setHour(16)->setMinute(0)->setSecond(0), 
+                            'keterangan' => 'Hadir'
+                        ]
+                    );
+
+                    // Absen Februari Tanggal 20 (Jam 8 - 4)
+                    Absensi::updateOrCreate(
+                        [
+                            'karyawan_id' => $karyawan->id, 
+                            'jam_masuk' => Carbon::create(2026, 2, 20, 8, 0, 0)
+                        ],
+                        [
+                            'jam_keluar' => Carbon::create(2026, 2, 20, 16, 0, 0), 
+                            'keterangan' => 'Hadir'
+                        ]
+                    );
                 }
 
                 DB::commit();
@@ -274,9 +308,7 @@ class DatabaseSeeder extends Seeder
         }
         
         $this->command->info('✅ Database Full Seeder Selesai!');
-        $this->command->warn("Simulasi: Bulan Saat Ini (" . Carbon::now()->format('F') . ")");
-        $this->command->info("- Gaji Pokok & Divisi: BERBEDA");
-        $this->command->info("- Upah per Jam: Januari 25k vs Februari 30k");
-        $this->command->info("- Tunjangan: Januari 200k vs Februari 300k");
+        $this->command->info("- Anggota IT Terbaru: Reza Kurniawan (Senior Developer) telah ditambahkan.");
+        $this->command->info("- Absensi Spesifik: Reza Kurniawan telah tercatat absen 20 Feb & Kemarin (08:00 - 16:00).");
     }
 }

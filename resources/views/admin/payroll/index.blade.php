@@ -4,10 +4,6 @@
 @section('page_title', 'Sistem Penggajian Bulanan')
 
 @section('content')
-{{-- 
-    State Global menggunakan Alpine.js 
-    - init(): Mengatur watcher agar saat bulan/tahun/divisi berubah, form otomatis submit.
---}}
 <div class="space-y-8 pb-12" x-data="{ 
     openGaji: false,
     activeTab: 'jabatan',
@@ -37,7 +33,6 @@
     }
 }">
 
-    {{-- 0. NOTIFICATION SYSTEM --}}
     @if(session('success'))
     <div class="fixed top-10 right-10 z-[9999] animate-bounce">
         <div class="bg-green-500 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4">
@@ -62,7 +57,6 @@
     </div>
     @endif
     
-    {{-- 1. HEADER --}}
     <div class="flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
             <h3 class="text-4xl font-black italic uppercase tracking-tighter text-cdi leading-none">
@@ -89,7 +83,6 @@
         </div>
     </div>
 
-    {{-- 2. AUTOMATIC FILTER & SEARCH --}}
     <div class="bg-white p-4 md:p-6 rounded-[2.5rem] border border-slate-100 shadow-sm">
         <form action="{{ route('admin.payroll') }}" method="GET" x-ref="filterForm" class="space-y-4">
             <div class="flex flex-col lg:flex-row gap-4">
@@ -135,7 +128,6 @@
         </form>
     </div>
 
-    {{-- 3. PAYROLL TABLE --}}
     <div class="bg-white rounded-[3.5rem] shadow-sm border border-slate-100 overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
@@ -180,18 +172,62 @@
                             Rp {{ number_format($k->total_jam_kerja * $k->rate_absensi_final, 0, ',', '.') }}
                             <div class="text-[7px] text-blue-400 lowercase">{{ $k->total_jam_kerja }} jam</div>
                         </td>
-                        <td class="px-4 py-7 text-green-600">
-                            Rp {{ number_format($k->bonus_tambahan ?? 0, 0, ',', '.') }}
-                            <div class="text-[7px] text-green-400 normal-case italic">{{ $k->keterangan_bonus ?? '-' }}</div>
-                        </td>
+                        <td class="px-4 py-7 text-green-600" x-data="{ showDetail: false }">
+    <div class="flex flex-col gap-1">
+        <div class="text-[13px] font-black">
+            Rp {{ number_format($k->bonus_tambahan_final, 0, ',', '.') }}
+        </div>
+        
+        @if($k->keterangan_bonus)
+            {{-- Tombol Detail Minimalis --}}
+            <button @click="showDetail = !showDetail" class="text-[7px] w-fit font-black uppercase tracking-tighter bg-green-50 px-2 py-1 rounded-md border border-green-100 hover:bg-green-600 hover:text-white transition-all">
+                <span x-text="showDetail ? 'Tutup Detail' : 'Lihat Detail'"></span>
+            </button>
+
+            {{-- List Detail Per Item --}}
+            <div x-show="showDetail" x-transition class="mt-2 space-y-1 bg-white p-2 rounded-xl border border-green-50 shadow-sm">
+                @foreach(explode('|', $k->keterangan_bonus) as $item)
+                    <div class="text-[8px] text-green-500 normal-case italic flex items-start gap-1 leading-tight">
+                        <i class="fas fa-plus-circle mt-0.5 text-[6px]"></i>
+                        <span>{{ trim($item) }}</span>
+                    </div>
+                @endforeach
+            </div>
+        @else
+            <div class="text-[7px] text-slate-300 italic">Tanpa Bonus</div>
+        @endif
+    </div>
+</td>
                         <td class="px-4 py-7 text-slate-600">
                             Rp {{ number_format($k->tanggungan_final * $k->tunjangan_final, 0, ',', '.') }}
                             <div class="text-[7px] text-slate-400 italic">{{ $k->tanggungan_final }} Jiwa</div>
                         </td>
-                        <td class="px-4 py-7 text-red-600">
-                            -Rp {{ number_format($k->potongan_gaji ?? 0, 0, ',', '.') }}
-                            <div class="text-[7px] text-red-400 normal-case italic">{{ $k->keterangan_potongan ?? '-' }}</div>
-                        </td>
+                        <td class="px-4 py-7 text-red-600" x-data="{ showDetail: false }">
+    <div class="flex flex-col gap-1">
+        <div class="text-[13px] font-black">
+            -Rp {{ number_format($k->potongan_final, 0, ',', '.') }}
+        </div>
+
+        @if($k->keterangan_potongan)
+            {{-- Tombol Detail Minimalis --}}
+            <button @click="showDetail = !showDetail" class="text-[7px] w-fit font-black uppercase tracking-tighter bg-red-50 px-2 py-1 rounded-md border border-red-100 hover:bg-red-600 hover:text-white transition-all">
+                <span x-text="showDetail ? 'Tutup Detail' : 'Lihat Detail'"></span>
+            </button>
+
+            {{-- List Detail Per Item --}}
+            <div x-show="showDetail" x-transition class="mt-2 space-y-1 bg-white p-2 rounded-xl border border-red-50 shadow-sm">
+                @foreach(explode('|', $k->keterangan_potongan) as $item)
+                    <div class="text-[8px] text-red-400 normal-case italic flex items-start gap-1 leading-tight">
+                        <i class="fas fa-minus-circle mt-0.5 text-[6px]"></i>
+                        <span>{{ trim($item) }}</span>
+                    </div>
+                @endforeach
+            </div>
+        @else
+            <div class="text-[7px] text-slate-300 italic">Tanpa Potongan</div>
+        @endif
+    </div>
+</td>
                         <td class="px-10 py-7 bg-slate-100/30 group-hover:bg-slate-100/80 text-right">
                             <p class="text-[15px] text-cdi italic tracking-tighter">
                                 Rp {{ number_format($k->total_gaji, 0, ',', '.') }}
@@ -211,7 +247,6 @@
         </div>
     </div>
 
-    {{-- MODAL UTAMA: KONFIGURASI --}}
     <div x-show="openGaji" 
          class="fixed inset-0 bg-cdi/80 z-[999] flex items-center justify-center p-4 backdrop-blur-sm" 
          x-transition:enter="transition ease-out duration-300"
@@ -221,7 +256,6 @@
         
         <div class="bg-white rounded-[3.5rem] w-full max-w-6xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col md:flex-row" @click.away="openGaji = false">
             
-            {{-- Sidebar Modal --}}
             <div class="w-full md:w-72 bg-slate-900 p-8 flex flex-col justify-between overflow-y-auto">
                 <div>
                     <h4 class="text-white font-black italic uppercase text-2xl tracking-tighter leading-tight mb-8">
@@ -254,10 +288,8 @@
                 </button>
             </div>
 
-            {{-- Content Area Modal --}}
             <div class="flex-1 p-10 overflow-y-auto bg-slate-50/50">
                 
-                {{-- TAB: GAJI JABATAN --}}
                 <div x-show="activeTab === 'jabatan'" x-transition>
                     <div class="mb-8">
                         <h5 class="text-cdi font-black uppercase text-lg italic leading-none">Standardisasi Gaji Jabatan</h5>
@@ -301,7 +333,6 @@
                     </form>
                 </div>
 
-                {{-- TAB: GAJI INDIVIDU --}}
                 <div x-show="activeTab === 'pokok'" x-transition>
                     <div class="mb-8">
                         <h5 class="text-cdi font-black uppercase text-lg italic leading-none">Custom Gaji Pokok Individu</h5>
@@ -327,236 +358,340 @@
                     </form>
                 </div>
 
-                {{-- TAB: BONUS TAMBAHAN (MULTI-INPUT) --}}
-                <div x-show="activeTab === 'bonus'" x-transition 
-                     x-data="{ 
-                        bonusTarget: 'karyawan', 
-                        bonusDivisi: '',
-                        items: [{ nominal: '', keterangan: '' }],
-                        addItem() { this.items.push({ nominal: '', keterangan: '' }) },
-                        removeItem(index) { if(this.items.length > 1) this.items.splice(index, 1) }
-                     }">
-                    <div class="mb-8">
-                        <h5 class="text-cdi font-black uppercase text-lg italic leading-none text-green-600">Input Bonus Tambahan</h5>
-                        <p class="text-slate-400 text-[10px] font-bold uppercase mt-2">Dapat menginput lebih dari satu bonus sekaligus</p>
-                    </div>
-                    
-                    <div class="flex gap-2 mb-6 bg-slate-100 p-1 rounded-2xl">
-                        <button @click="bonusTarget = 'karyawan'" :class="bonusTarget === 'karyawan' ? 'bg-white text-cdi shadow-sm' : 'text-slate-400'" class="flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Per Karyawan</button>
-                        <button @click="bonusTarget = 'divisi'" :class="bonusTarget === 'divisi' ? 'bg-white text-cdi shadow-sm' : 'text-slate-400'" class="flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Per Divisi</button>
-                        <button @click="bonusTarget = 'jabatan'" :class="bonusTarget === 'jabatan' ? 'bg-white text-cdi shadow-sm' : 'text-slate-400'" class="flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Per Jabatan</button>
-                    </div>
+<!-- TAB BONUS -->
+<div x-show="activeTab === 'bonus'" x-transition 
+     x-data="{ 
+        bonusTarget: 'karyawan', 
+        bonusDivisi: '',
+        bonusKaryawan: '',
+        bonusJabatan: '',
+        existingBonus: [],
+        items: [{ nominal: '', keterangan: '' }],
+        
+        addItem() { this.items.push({ nominal: '', keterangan: '' }) },
+        removeItem(index) { if(this.items.length > 1) this.items.splice(index, 1) },
 
-                    <form action="{{ route('payroll.update_bonus') }}" method="POST" class="space-y-6">
-                        @csrf
-                        <input type="hidden" name="bulan" :value="globalBulan">
-                        <input type="hidden" name="tahun" :value="globalTahun">
-                        <input type="hidden" name="target_type" :value="bonusTarget">
+        async fetchExisting() {
+            // Reset list jika pilihan belum lengkap
+            if (this.bonusTarget === 'karyawan' && !this.bonusKaryawan) return this.existingBonus = [];
+            if (this.bonusTarget === 'divisi' && !this.bonusDivisi) return this.existingBonus = [];
+            if (this.bonusTarget === 'jabatan' && (!this.bonusDivisi || !this.bonusJabatan)) return this.existingBonus = [];
 
-                        <div class="space-y-4">
-                            <div x-show="bonusTarget === 'karyawan'">
-                                <select name="karyawan_id" :required="bonusTarget === 'karyawan'" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
-                                    <option value="">-- Pilih Karyawan --</option>
-                                    @foreach($karyawans as $k)
-                                        <option value="{{ $k->id }}">{{ $k->nama }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
+            const resp = await fetch(`{{ route('payroll.get_details') }}?target_type=${this.bonusTarget}&karyawan_id=${this.bonusKaryawan}&divisi_id=${this.bonusDivisi}&jabatan=${this.bonusJabatan}&bulan=${globalBulan}&tahun=${globalTahun}`);
+            const data = await resp.json();
+            this.existingBonus = data.bonus;
+        },
 
-                            <div x-show="bonusTarget === 'divisi'">
-                                <select name="divisi_id" :required="bonusTarget === 'divisi'" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
-                                    <option value="">-- Pilih Divisi --</option>
-                                    @foreach($divisis as $div)
-                                        <option value="{{ $div->id }}">{{ $div->nama }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
+        async removeBonus(index) {
+            if(!confirm('Hapus item bonus ini secara permanen?')) return;
+            
+            const formData = new FormData();
+            formData.append('_token', '{{ csrf_token() }}');
+            formData.append('karyawan_id', this.bonusKaryawan);
+            formData.append('bulan', globalBulan);
+            formData.append('tahun', globalTahun);
+            formData.append('type', 'bonus');
+            formData.append('index', index);
 
-                            <div x-show="bonusTarget === 'jabatan'" class="grid grid-cols-2 gap-4">
-                                <select x-model="bonusDivisi" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
-                                    <option value="">-- Divisi --</option>
-                                    @foreach($divisis as $div)
-                                        <option value="{{ $div->id }}">{{ $div->nama }}</option>
-                                    @endforeach
-                                </select>
-                                <select name="jabatan" :required="bonusTarget === 'jabatan'" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
-                                    <option value="">-- Jabatan --</option>
-                                    <template x-for="div in divisiData.filter(d => d.id == bonusDivisi)" :key="div.id">
-                                        <template x-for="jab in div.jabatans" :key="jab">
-                                            <option :value="jab" x-text="jab"></option>
-                                        </template>
-                                    </template>
-                                </select>
-                            </div>
-
-                            {{-- Bonus Items List --}}
-                            <div class="space-y-3 bg-white/50 p-4 rounded-[2rem] border border-slate-100">
-                                <label class="text-[9px] font-black text-slate-400 uppercase ml-2 mb-2 block">Daftar Item Bonus</label>
-                                <template x-for="(item, index) in items" :key="index">
-                                    <div class="flex gap-3 items-center animate-fadeIn">
-                                        <div class="relative flex-1">
-                                            <span class="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-300 text-[10px]">RP</span>
-                                            <input type="number" name="bonus_nominal[]" x-model="item.nominal" required placeholder="NOMINAL" class="w-full bg-white border-2 border-slate-100 p-4 pl-10 rounded-2xl text-xs font-black text-cdi outline-none focus:border-cdi">
-                                        </div>
-                                        <div class="flex-[1.5]">
-                                            <input type="text" name="bonus_keterangan[]" x-model="item.keterangan" required placeholder="KETERANGAN BONUS (CONTOH: LEMBUR RAYA)" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[10px] font-bold text-cdi outline-none focus:border-cdi uppercase">
-                                        </div>
-                                        <button type="button" @click="removeItem(index)" class="w-10 h-10 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all">
-                                            <i class="fas fa-times"></i>
-                                        </button>
-                                    </div>
-                                </template>
-                                
-                                <button type="button" @click="addItem()" class="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] font-black text-slate-400 uppercase hover:border-green-400 hover:text-green-500 transition-all mt-2">
-                                    <i class="fas fa-plus mr-2"></i> Tambah Baris Bonus
-                                </button>
-                            </div>
-
-                            <button type="submit" class="w-full bg-green-600 text-white py-5 rounded-2xl font-black uppercase italic tracking-widest hover:bg-green-700 shadow-lg transition-all">Terapkan Semua Bonus</button>
-                        </div>
-                    </form>
-                </div>
-
-                {{-- TAB: POTONGAN GAJI (MULTI-INPUT) --}}
-                <div x-show="activeTab === 'potongan'" x-transition 
-                     x-data="{ 
-                        potTarget: 'karyawan', 
-                        potDivisi: '',
-                        items: [{ nominal: '', keterangan: '' }],
-                        addItem() { this.items.push({ nominal: '', keterangan: '' }) },
-                        removeItem(index) { if(this.items.length > 1) this.items.splice(index, 1) }
-                     }">
-                    <div class="mb-8">
-                        <h5 class="text-cdi font-black uppercase text-lg italic leading-none text-red-600">Input Potongan Gaji</h5>
-                        <p class="text-slate-400 text-[10px] font-bold uppercase mt-2">Denda atau cicilan per individu, divisi atau jabatan</p>
-                    </div>
-
-                    <div class="flex gap-2 mb-6 bg-slate-100 p-1 rounded-2xl">
-                        <button @click="potTarget = 'karyawan'" :class="potTarget === 'karyawan' ? 'bg-white text-cdi shadow-sm' : 'text-slate-400'" class="flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Per Karyawan</button>
-                        <button @click="potTarget = 'divisi'" :class="potTarget === 'divisi' ? 'bg-white text-cdi shadow-sm' : 'text-slate-400'" class="flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Per Divisi</button>
-                        <button @click="potTarget = 'jabatan'" :class="potTarget === 'jabatan' ? 'bg-white text-cdi shadow-sm' : 'text-slate-400'" class="flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Per Jabatan</button>
-                    </div>
-
-                    <form action="{{ route('payroll.update_potongan') }}" method="POST" class="space-y-6">
-                        @csrf
-                        <input type="hidden" name="bulan" :value="globalBulan">
-                        <input type="hidden" name="tahun" :value="globalTahun">
-                        <input type="hidden" name="target_type" :value="potTarget">
-
-                        <div class="space-y-4">
-                            <div x-show="potTarget === 'karyawan'">
-                                <select name="karyawan_id" :required="potTarget === 'karyawan'" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
-                                    <option value="">-- Pilih Karyawan --</option>
-                                    @foreach($karyawans as $k)
-                                        <option value="{{ $k->id }}">{{ $k->nama }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-
-                            <div x-show="potTarget === 'divisi'">
-                                <select name="divisi_id" :required="potTarget === 'divisi'" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
-                                    <option value="">-- Pilih Divisi --</option>
-                                    @foreach($divisis as $div)
-                                        <option value="{{ $div->id }}">{{ $div->nama }}</option>
-                                    @endforeach
-                                </select>
-                            </div>
-
-                            <div x-show="potTarget === 'jabatan'" class="grid grid-cols-2 gap-4">
-                                <select x-model="potDivisi" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
-                                    <option value="">-- Divisi --</option>
-                                    @foreach($divisis as $div)
-                                        <option value="{{ $div->id }}">{{ $div->nama }}</option>
-                                    @endforeach
-                                </select>
-                                <select name="jabatan" :required="potTarget === 'jabatan'" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
-                                    <option value="">-- Jabatan --</option>
-                                    <template x-for="div in divisiData.filter(d => d.id == potDivisi)" :key="div.id">
-                                        <template x-for="jab in div.jabatans" :key="jab">
-                                            <option :value="jab" x-text="jab"></option>
-                                        </template>
-                                    </template>
-                                </select>
-                            </div>
-
-                            {{-- Potongan Items List --}}
-                            <div class="space-y-3 bg-white/50 p-4 rounded-[2rem] border border-slate-100">
-                                <label class="text-[9px] font-black text-slate-400 uppercase ml-2 mb-2 block">Daftar Item Potongan</label>
-                                <template x-for="(item, index) in items" :key="index">
-                                    <div class="flex gap-3 items-center animate-fadeIn">
-                                        <div class="relative flex-1">
-                                            <span class="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-300 text-[10px]">RP</span>
-                                            <input type="number" name="potongan_nominal[]" x-model="item.nominal" required placeholder="NOMINAL" class="w-full bg-white border-2 border-slate-100 p-4 pl-10 rounded-2xl text-xs font-black text-cdi outline-none focus:border-cdi">
-                                        </div>
-                                        <div class="flex-[1.5]">
-                                            <input type="text" name="potongan_keterangan[]" x-model="item.keterangan" required placeholder="KETERANGAN POTONGAN (CONTOH: KASBON)" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[10px] font-bold text-cdi outline-none focus:border-cdi uppercase">
-                                        </div>
-                                        <button type="button" @click="removeItem(index)" class="w-10 h-10 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all">
-                                            <i class="fas fa-times"></i>
-                                        </button>
-                                    </div>
-                                </template>
-                                
-                                <button type="button" @click="addItem()" class="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] font-black text-slate-400 uppercase hover:border-red-400 hover:text-red-500 transition-all mt-2">
-                                    <i class="fas fa-plus mr-2"></i> Tambah Baris Potongan
-                                </button>
-                            </div>
-
-                            <button type="submit" class="w-full bg-red-600 text-white py-5 rounded-2xl font-black uppercase italic tracking-widest hover:bg-red-700 shadow-lg transition-all">Terapkan Semua Potongan</button>
-                        </div>
-                    </form>
-                </div>
-
-                {{-- TAB: RATE ABSENSI --}}
-                <div x-show="activeTab === 'absensi'" x-transition>
-                    <div class="mb-8">
-                        <h5 class="text-cdi font-black uppercase text-lg italic leading-none text-blue-600">Konfigurasi Rate Absensi</h5>
-                        <p class="text-slate-400 text-[10px] font-bold uppercase mt-2">Global Snapshot: Nilai Rupiah per 1 jam kerja</p>
-                    </div>
-                    <form action="{{ route('payroll.update_rate_absensi') }}" method="POST" class="space-y-6">
-                        @csrf
-                        <input type="hidden" name="bulan" :value="globalBulan">
-                        <input type="hidden" name="tahun" :value="globalTahun">
-                        <div class="space-y-4">
-                            <div class="relative">
-                                <span class="absolute left-10 top-1/2 -translate-y-1/2 font-black text-blue-300 text-lg">RP</span>
-                                <input type="number" name="rate_absensi" 
-                                    value="{{ $karyawans->first()->rate_absensi_final ?? 10000 }}" required 
-                                    class="w-full bg-white border-none rounded-3xl p-6 pl-20 text-xl font-black text-cdi outline-none ring-4 ring-blue-50 focus:ring-blue-400 transition-all text-center">
-                            </div>
-                            <button type="submit" class="w-full bg-blue-600 text-white py-6 rounded-3xl font-black uppercase italic tracking-widest hover:bg-cdi shadow-lg transition-all">Simpan Rate Absensi</button>
-                        </div>
-                    </form>
-                </div>
-
-                {{-- TAB: TUNJANGAN --}}
-                <div x-show="activeTab === 'tunjangan'" x-transition>
-                    <div class="mb-8">
-                        <h5 class="text-cdi font-black uppercase text-lg italic leading-none text-green-600">Parameter Tunjangan Keluarga</h5>
-                        <p class="text-slate-400 text-[10px] font-bold uppercase mt-2">Global Snapshot: Nilai Rupiah per 1 jiwa tanggungan</p>
-                    </div>
-                    <form action="{{ route('payroll.update_tunjangan') }}" method="POST" class="space-y-6">
-                        @csrf
-                        <input type="hidden" name="bulan" :value="globalBulan">
-                        <input type="hidden" name="tahun" :value="globalTahun">
-                        <div class="space-y-4">
-                            <div class="relative">
-                                <span class="absolute left-10 top-1/2 -translate-y-1/2 font-black text-green-300 text-lg">RP</span>
-                                <input type="number" name="tunjangan_tanggungan" 
-                                    value="{{ $karyawans->first()->tunjangan_final ?? 100000 }}" required 
-                                    class="w-full bg-white border-none rounded-3xl p-6 pl-20 text-xl font-black text-cdi outline-none ring-4 ring-green-50 focus:ring-green-400 transition-all text-center">
-                            </div>
-                            <button type="submit" class="w-full bg-cdi-orange text-white py-6 rounded-3xl font-black uppercase italic tracking-widest hover:bg-cdi shadow-lg transition-all">Simpan Tunjangan</button>
-                        </div>
-                    </form>
-                </div>
-
-            </div>
-        </div>
+            try {
+                const response = await fetch('{{ route('payroll.delete_item') }}', { 
+                    method: 'POST', 
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                
+                if(response.ok) {
+                    await this.fetchExisting();
+                    alert('Item bonus berhasil dihapus');
+                    // Opsional: location.reload() jika ingin update total tabel di belakang modal
+                    location.reload();
+                }
+            } catch (error) {
+                alert('Gagal menghapus item');
+            }
+        }
+     }">
+    
+    <div class="mb-8">
+        <h5 class="text-cdi font-black uppercase text-lg italic leading-none text-green-600">Input Bonus Tambahan</h5>
+        <p class="text-slate-400 text-[10px] font-bold uppercase mt-2">Dapat menginput lebih dari satu bonus sekaligus</p>
+    </div>
+    
+    <div class="flex gap-2 mb-6 bg-slate-100 p-1 rounded-2xl">
+        <button @click="bonusTarget = 'karyawan'; fetchExisting()" :class="bonusTarget === 'karyawan' ? 'bg-white text-cdi shadow-sm' : 'text-slate-400'" class="flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Per Karyawan</button>
+        <button @click="bonusTarget = 'divisi'; fetchExisting()" :class="bonusTarget === 'divisi' ? 'bg-white text-cdi shadow-sm' : 'text-slate-400'" class="flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Per Divisi</button>
+        <button @click="bonusTarget = 'jabatan'; fetchExisting()" :class="bonusTarget === 'jabatan' ? 'bg-white text-cdi shadow-sm' : 'text-slate-400'" class="flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Per Jabatan</button>
     </div>
 
+    <!-- LIST BONUS YANG SUDAH ADA -->
+    <div class="mb-6 space-y-2" x-show="existingBonus.length > 0">
+        <label class="text-[9px] font-black text-slate-400 uppercase ml-2 block">Bonus Aktif (Klik sampah untuk menghapus):</label>
+        <template x-for="(ex, i) in existingBonus" :key="i">
+            <div class="flex justify-between items-center bg-green-50 p-3 rounded-xl border border-green-100 animate-fadeIn">
+                <span class="text-[10px] font-bold text-green-700" x-text="ex"></span>
+                <button type="button" @click="removeBonus(i)" class="text-red-400 hover:text-red-600 transition-colors">
+                    <i class="fas fa-trash-alt text-xs"></i>
+                </button>
+            </div>
+        </template>
+    </div>
+
+    <form action="{{ route('payroll.update_bonus') }}" method="POST" class="space-y-6">
+        @csrf
+        <input type="hidden" name="bulan" :value="globalBulan">
+        <input type="hidden" name="tahun" :value="globalTahun">
+        <input type="hidden" name="target_type" :value="bonusTarget">
+
+        <div class="space-y-4">
+            <div x-show="bonusTarget === 'karyawan'">
+                <select name="karyawan_id" x-model="bonusKaryawan" @change="fetchExisting()" :required="bonusTarget === 'karyawan'" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
+                    <option value="">-- Pilih Karyawan --</option>
+                    @foreach($karyawans as $k)
+                        <option value="{{ $k->id }}">{{ $k->nama }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div x-show="bonusTarget === 'divisi'">
+                <select name="divisi_id" x-model="bonusDivisi" @change="fetchExisting()" :required="bonusTarget === 'divisi'" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
+                    <option value="">-- Pilih Divisi --</option>
+                    @foreach($divisis as $div)
+                        <option value="{{ $div->id }}">{{ $div->nama }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div x-show="bonusTarget === 'jabatan'" class="grid grid-cols-2 gap-4">
+                <select x-model="bonusDivisi" @change="fetchExisting()" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
+                    <option value="">-- Divisi --</option>
+                    @foreach($divisis as $div)
+                        <option value="{{ $div->id }}">{{ $div->nama }}</option>
+                    @endforeach
+                </select>
+                <select name="jabatan" x-model="bonusJabatan" @change="fetchExisting()" :required="bonusTarget === 'jabatan'" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
+                    <option value="">-- Jabatan --</option>
+                    <template x-for="div in divisiData.filter(d => d.id == bonusDivisi)" :key="div.id">
+                        <template x-for="jab in div.jabatans" :key="jab">
+                            <option :value="jab" x-text="jab"></option>
+                        </template>
+                    </template>
+                </select>
+            </div>
+
+            <div class="space-y-3 bg-white/50 p-4 rounded-[2rem] border border-slate-100">
+                <label class="text-[9px] font-black text-slate-400 uppercase ml-2 mb-2 block">Tambah Item Bonus Baru</label>
+                <template x-for="(item, index) in items" :key="index">
+                    <div class="flex gap-3 items-center animate-fadeIn">
+                        <div class="relative flex-1">
+                            <span class="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-300 text-[10px]">RP</span>
+                            <input type="number" name="bonus_nominal[]" x-model="item.nominal" required placeholder="NOMINAL" class="w-full bg-white border-2 border-slate-100 p-4 pl-10 rounded-2xl text-xs font-black text-cdi outline-none focus:border-cdi">
+                        </div>
+                        <div class="flex-[1.5]">
+                            <input type="text" name="bonus_keterangan[]" x-model="item.keterangan" required placeholder="KETERANGAN BONUS" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[10px] font-bold text-cdi outline-none focus:border-cdi uppercase">
+                        </div>
+                        <button type="button" @click="removeItem(index)" class="w-10 h-10 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </template>
+                
+                <button type="button" @click="addItem()" class="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] font-black text-slate-400 uppercase hover:border-green-400 hover:text-green-500 transition-all mt-2">
+                    <i class="fas fa-plus mr-2"></i> Tambah Baris Bonus
+                </button>
+            </div>
+
+            <button type="submit" class="w-full bg-green-600 text-white py-5 rounded-2xl font-black uppercase italic tracking-widest hover:bg-green-700 shadow-lg transition-all">Terapkan Semua Bonus</button>
+        </div>
+    </form>
 </div>
 
+<!-- TAB POTONGAN -->
+<div x-show="activeTab === 'potongan'" x-transition 
+     x-data="{ 
+        potTarget: 'karyawan', 
+        potDivisi: '',
+        potKaryawan: '',
+        potJabatan: '',
+        existingPotongan: [],
+        items: [{ nominal: '', keterangan: '' }],
+
+        addItem() { this.items.push({ nominal: '', keterangan: '' }) },
+        removeItem(index) { if(this.items.length > 1) this.items.splice(index, 1) },
+
+        async fetchExisting() {
+            if (this.potTarget === 'karyawan' && !this.potKaryawan) return this.existingPotongan = [];
+            if (this.potTarget === 'divisi' && !this.potDivisi) return this.existingPotongan = [];
+            if (this.potTarget === 'jabatan' && (!this.potDivisi || !this.potJabatan)) return this.existingPotongan = [];
+
+            const resp = await fetch(`{{ route('payroll.get_details') }}?target_type=${this.potTarget}&karyawan_id=${this.potKaryawan}&divisi_id=${this.potDivisi}&jabatan=${this.potJabatan}&bulan=${globalBulan}&tahun=${globalTahun}`);
+            const data = await resp.json();
+            this.existingPotongan = data.potongan;
+        },
+
+        async removePotongan(index) {
+            if(!confirm('Hapus item potongan ini secara permanen?')) return;
+            
+            const formData = new FormData();
+            formData.append('_token', '{{ csrf_token() }}');
+            formData.append('karyawan_id', this.potKaryawan);
+            formData.append('bulan', globalBulan);
+            formData.append('tahun', globalTahun);
+            formData.append('type', 'potongan');
+            formData.append('index', index);
+
+            try {
+                const response = await fetch('{{ route('payroll.delete_item') }}', { 
+                    method: 'POST', 
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                
+                if(response.ok) {
+                    await this.fetchExisting();
+                    alert('Item potongan berhasil dihapus');
+                    location.reload();
+                }
+            } catch (error) {
+                alert('Gagal menghapus item');
+            }
+        }
+     }">
+    <div class="mb-8">
+        <h5 class="text-cdi font-black uppercase text-lg italic leading-none text-red-600">Input Potongan Gaji</h5>
+        <p class="text-slate-400 text-[10px] font-bold uppercase mt-2">Denda atau cicilan per individu, divisi atau jabatan</p>
+    </div>
+
+    <div class="flex gap-2 mb-6 bg-slate-100 p-1 rounded-2xl">
+        <button @click="potTarget = 'karyawan'; fetchExisting()" :class="potTarget === 'karyawan' ? 'bg-white text-cdi shadow-sm' : 'text-slate-400'" class="flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Per Karyawan</button>
+        <button @click="potTarget = 'divisi'; fetchExisting()" :class="potTarget === 'divisi' ? 'bg-white text-cdi shadow-sm' : 'text-slate-400'" class="flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Per Divisi</button>
+        <button @click="potTarget = 'jabatan'; fetchExisting()" :class="potTarget === 'jabatan' ? 'bg-white text-cdi shadow-sm' : 'text-slate-400'" class="flex-1 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all">Per Jabatan</button>
+    </div>
+
+    <!-- LIST POTONGAN YANG SUDAH ADA -->
+    <div class="mb-6 space-y-2" x-show="existingPotongan.length > 0">
+        <label class="text-[9px] font-black text-slate-400 uppercase ml-2 block">Potongan Aktif (Klik sampah untuk menghapus):</label>
+        <template x-for="(ex, i) in existingPotongan" :key="i">
+            <div class="flex justify-between items-center bg-red-50 p-3 rounded-xl border border-red-100 animate-fadeIn">
+                <span class="text-[10px] font-bold text-red-700" x-text="ex"></span>
+                <button type="button" @click="removePotongan(i)" class="text-red-400 hover:text-red-600">
+                    <i class="fas fa-trash-alt text-xs"></i>
+                </button>
+            </div>
+        </template>
+    </div>
+
+    <form action="{{ route('payroll.update_potongan') }}" method="POST" class="space-y-6">
+        @csrf
+        <input type="hidden" name="bulan" :value="globalBulan">
+        <input type="hidden" name="tahun" :value="globalTahun">
+        <input type="hidden" name="target_type" :value="potTarget">
+
+        <div class="space-y-4">
+            <div x-show="potTarget === 'karyawan'">
+                <select name="karyawan_id" x-model="potKaryawan" @change="fetchExisting()" :required="potTarget === 'karyawan'" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
+                    <option value="">-- Pilih Karyawan --</option>
+                    @foreach($karyawans as $k)
+                        <option value="{{ $k->id }}">{{ $k->nama }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div x-show="potTarget === 'divisi'">
+                <select name="divisi_id" x-model="potDivisi" @change="fetchExisting()" :required="potTarget === 'divisi'" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
+                    <option value="">-- Pilih Divisi --</option>
+                    @foreach($divisis as $div)
+                        <option value="{{ $div->id }}">{{ $div->nama }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div x-show="potTarget === 'jabatan'" class="grid grid-cols-2 gap-4">
+                <select x-model="potDivisi" @change="fetchExisting()" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
+                    <option value="">-- Divisi --</option>
+                    @foreach($divisis as $div)
+                        <option value="{{ $div->id }}">{{ $div->nama }}</option>
+                    @endforeach
+                </select>
+                <select name="jabatan" x-model="potJabatan" @change="fetchExisting()" :required="potTarget === 'jabatan'" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[11px] font-black text-cdi outline-none focus:border-cdi uppercase">
+                    <option value="">-- Jabatan --</option>
+                    <template x-for="div in divisiData.filter(d => d.id == potDivisi)" :key="div.id">
+                        <template x-for="jab in div.jabatans" :key="jab">
+                            <option :value="jab" x-text="jab"></option>
+                        </template>
+                    </template>
+                </select>
+            </div>
+
+            <div class="space-y-3 bg-white/50 p-4 rounded-[2rem] border border-slate-100">
+                <label class="text-[9px] font-black text-slate-400 uppercase ml-2 mb-2 block">Tambah Item Potongan Baru</label>
+                <template x-for="(item, index) in items" :key="index">
+                    <div class="flex gap-3 items-center animate-fadeIn">
+                        <div class="relative flex-1">
+                            <span class="absolute left-4 top-1/2 -translate-y-1/2 font-black text-slate-300 text-[10px]">RP</span>
+                            <input type="number" name="potongan_nominal[]" x-model="item.nominal" required placeholder="NOMINAL" class="w-full bg-white border-2 border-slate-100 p-4 pl-10 rounded-2xl text-xs font-black text-cdi outline-none focus:border-cdi">
+                        </div>
+                        <div class="flex-[1.5]">
+                            <input type="text" name="potongan_keterangan[]" x-model="item.keterangan" required placeholder="KETERANGAN POTONGAN" class="w-full bg-white border-2 border-slate-100 p-4 rounded-2xl text-[10px] font-bold text-cdi outline-none focus:border-cdi uppercase">
+                        </div>
+                        <button type="button" @click="removeItem(index)" class="w-10 h-10 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </template>
+                
+                <button type="button" @click="addItem()" class="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-[9px] font-black text-slate-400 uppercase hover:border-red-400 hover:text-red-500 transition-all mt-2">
+                    <i class="fas fa-plus mr-2"></i> Tambah Baris Potongan
+                </button>
+            </div>
+
+            <button type="submit" class="w-full bg-red-600 text-white py-5 rounded-2xl font-black uppercase italic tracking-widest hover:bg-red-700 shadow-lg transition-all">Terapkan Semua Potongan</button>
+        </div>
+    </form>
+</div>
+
+<!-- TAB ABSENSI -->
+<div x-show="activeTab === 'absensi'" x-transition>
+    <div class="mb-8">
+        <h5 class="text-cdi font-black uppercase text-lg italic leading-none text-blue-600">Konfigurasi Rate Absensi</h5>
+        <p class="text-slate-400 text-[10px] font-bold uppercase mt-2">Global Snapshot: Nilai Rupiah per 1 jam kerja</p>
+    </div>
+    <form action="{{ route('payroll.update_rate_absensi') }}" method="POST" class="space-y-6">
+        @csrf
+        <input type="hidden" name="bulan" :value="globalBulan">
+        <input type="hidden" name="tahun" :value="globalTahun">
+        <div class="space-y-4">
+            <div class="relative">
+                <span class="absolute left-10 top-1/2 -translate-y-1/2 font-black text-blue-300 text-lg">RP</span>
+                <input type="number" name="rate_absensi" 
+                    value="{{ $karyawans->first()->rate_absensi_final ?? 10000 }}" required 
+                    class="w-full bg-white border-none rounded-3xl p-6 pl-20 text-xl font-black text-cdi outline-none ring-4 ring-blue-50 focus:ring-blue-400 transition-all text-center">
+            </div>
+            <button type="submit" class="w-full bg-blue-600 text-white py-6 rounded-3xl font-black uppercase italic tracking-widest hover:bg-cdi shadow-lg transition-all">Simpan Rate Absensi</button>
+        </div>
+    </form>
+</div>
+
+<!-- TAB TUNJANGAN -->
+<div x-show="activeTab === 'tunjangan'" x-transition>
+    <div class="mb-8">
+        <h5 class="text-cdi font-black uppercase text-lg italic leading-none text-green-600">Parameter Tunjangan Keluarga</h5>
+        <p class="text-slate-400 text-[10px] font-bold uppercase mt-2">Global Snapshot: Nilai Rupiah per 1 jiwa tanggungan</p>
+    </div>
+    <form action="{{ route('payroll.update_tunjangan') }}" method="POST" class="space-y-6">
+        @csrf
+        <input type="hidden" name="bulan" :value="globalBulan">
+        <input type="hidden" name="tahun" :value="globalTahun">
+        <div class="space-y-4">
+            <div class="relative">
+                <span class="absolute left-10 top-1/2 -translate-y-1/2 font-black text-green-300 text-lg">RP</span>
+                <input type="number" name="tunjangan_tanggungan" 
+                    value="{{ $karyawans->first()->tunjangan_final ?? 100000 }}" required 
+                    class="w-full bg-white border-none rounded-3xl p-6 pl-20 text-xl font-black text-cdi outline-none ring-4 ring-green-50 focus:ring-green-400 transition-all text-center">
+            </div>
+            <button type="submit" class="w-full bg-cdi-orange text-white py-6 rounded-3xl font-black uppercase italic tracking-widest hover:bg-cdi shadow-lg transition-all">Simpan Tunjangan</button>
+        </div>
+    </form>
+</div>
 <style>
     [x-cloak] { display: none !important; }
     .overflow-x-auto::-webkit-scrollbar { height: 6px; }

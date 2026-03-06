@@ -8,7 +8,8 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
-     * * Tabel ini menyimpan histori atau "Snapshot" parameter penggajian.
+     * 
+     * Tabel ini menyimpan histori atau "Snapshot" parameter penggajian.
      * Hal ini memungkinkan perubahan gaji di masa depan tidak merubah laporan gaji masa lalu.
      */
     public function up(): void
@@ -25,7 +26,7 @@ return new class extends Migration
             // 2. Periode Penggajian
             // Digunakan sebagai kunci utama pencarian laporan bulanan
             $table->integer('bulan'); // 1-12
-            $table->integer('tahun'); // Contoh: 2024
+            $table->integer('tahun'); // Contoh: 2026
 
             /* |--------------------------------------------------------------------------
             | DATA FINANSIAL SNAPSHOT (Parameter yang bisa diatur di Modal Payroll)
@@ -46,17 +47,20 @@ return new class extends Migration
             $table->decimal('tunjangan_per_tanggungan', 15, 2)->default(0);
 
             /**
-             * PERUBAHAN TERBARU: Bonus dan Potongan
-             * Kolom ini digunakan untuk menyimpan nilai input dinamis per karyawan per bulan.
+             * PERUBAHAN TERBARU: Bonus dan Potongan (Nominal & Keterangan Spesifik)
+             * Memisahkan keterangan bonus dan potongan agar pelaporan lebih detil.
              */
-            $table->decimal('bonus_tambahan', 15, 2)->default(0); // Untuk Bonus/Insentif
-            $table->decimal('potongan_gaji', 15, 2)->default(0);  // Untuk Kasbon/Denda/Potongan
+            $table->decimal('bonus_tambahan', 15, 2)->default(0); 
+            $table->text('keterangan_bonus')->nullable(); // Menyimpan rincian asal bonus (Misal: Lembur, THR)
+            
+            $table->decimal('potongan_gaji', 15, 2)->default(0);  
+            $table->text('keterangan_potongan')->nullable(); // Menyimpan rincian alasan potongan (Misal: Kasbon, Atribut)
 
             // 3. Data Tambahan untuk Audit
             // Menyimpan jumlah tanggungan saat bulan tersebut untuk keperluan histori yang akurat
             $table->integer('jumlah_tanggungan_snapshot')->default(0); 
             
-            // Kolom keterangan jika ada catatan khusus per periode (Misal: "Bonus Lembur Proyek A")
+            // Kolom keterangan umum (Catatan tambahan admin jika ada)
             $table->text('keterangan')->nullable(); 
             
             $table->timestamps();
@@ -66,7 +70,7 @@ return new class extends Migration
             | INDEXING
             |--------------------------------------------------------------------------
             | Menambahkan index pada kombinasi karyawan dan periode untuk mempercepat 
-            | query saat dashboard payroll dibuka.
+            | query saat dashboard atau laporan payroll dibuka.
             */
             $table->index(['karyawan_id', 'bulan', 'tahun'], 'idx_payroll_period');
         });

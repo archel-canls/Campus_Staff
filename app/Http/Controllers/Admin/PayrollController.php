@@ -63,6 +63,8 @@ class PayrollController extends Controller
                 $k->tunjangan_final    = $history->tunjangan_per_tanggungan;
                 $k->bonus_tambahan_final = $history->bonus_tambahan ?? 0;
                 $k->potongan_final     = $history->potongan_gaji ?? 0; 
+                $k->keterangan_bonus   = $history->keterangan_bonus; 
+                $k->keterangan_potongan = $history->keterangan_potongan; 
                 
                 // Ambil jumlah tanggungan dari snapshot, fallback ke master jika nol
                 $k->tanggungan_final   = ($history->jumlah_tanggungan_snapshot > 0) 
@@ -77,6 +79,8 @@ class PayrollController extends Controller
                 $k->tanggungan_final   = $k->jumlah_tanggungan ?? 0;
                 $k->bonus_tambahan_final = 0;
                 $k->potongan_final     = 0;
+                $k->keterangan_bonus   = null;
+                $k->keterangan_potongan = null;
             }
 
             // Hitung Absensi Menit ke Jam
@@ -103,6 +107,195 @@ class PayrollController extends Controller
         }
 
         return view('admin.payroll.index', compact('karyawans', 'divisis', 'bulan', 'tahun'));
+    }
+
+    /**
+     * UPDATE BONUS:
+     * Mendukung multi-input nominal & keterangan dengan format mendetail (Nominal) Keterangan.
+     */
+    public function updateBonus(Request $request)
+    {
+        $request->validate([
+            'target_type' => 'required|in:karyawan,divisi,jabatan',
+            'bulan' => 'required|integer',
+            'tahun' => 'required|integer',
+            'bonus_nominal' => 'required|array',
+            'bonus_nominal.*' => 'required|numeric|min:0',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $totalInputNominal = array_sum($request->bonus_nominal);
+            
+            $items = [];
+            foreach($request->bonus_nominal as $idx => $nom) {
+                $ket = $request->bonus_keterangan[$idx] ?? 'Bonus';
+                $items[] = "(" . number_format($nom, 0, ',', '.') . ") " . $ket;
+            }
+            $keteranganBaruStr = implode(" | ", $items);
+
+            $query = Karyawan::query();
+            if ($request->target_type === 'karyawan') {
+                $query->where('id', $request->karyawan_id);
+            } elseif ($request->target_type === 'divisi') {
+                $query->where('divisi_id', $request->divisi_id);
+            } elseif ($request->target_type === 'jabatan') {
+                $query->where('divisi_id', $request->divisi_id)->where('jabatan', $request->jabatan);
+            }
+
+            $karyawanIds = $query->pluck('id');
+
+            foreach ($karyawanIds as $id) {
+                $history = PayrollHistory::firstOrNew([
+                    'karyawan_id' => $id,
+                    'bulan' => $request->bulan,
+                    'tahun' => $request->tahun
+                ]);
+
+                $history->bonus_tambahan = ($history->bonus_tambahan ?? 0) + $totalInputNominal;
+                $history->keterangan_bonus = $history->keterangan_bonus 
+                    ? $history->keterangan_bonus . " | " . $keteranganBaruStr 
+                    : $keteranganBaruStr;
+
+                if (!$history->exists) {
+                    $k = Karyawan::find($id);
+                    $history->gaji_pokok_nominal = $k->gaji_pokok;
+                    $history->gaji_divisi_snapshot = $k->divisi ? $k->divisi->getGajiJabatan($k->jabatan) : 0;
+                    $history->rate_absensi_per_jam = $k->hourly_rate ?? 25000;
+                    $history->tunjangan_per_tanggungan = $k->tunjangan_per_tanggungan;
+                    $history->jumlah_tanggungan_snapshot = $k->jumlah_tanggungan;
+                }
+                $history->save();
+            }
+
+            DB::commit();
+            return back()->with('success', 'Bonus berhasil dicatat secara mendetail.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->with('error', 'Gagal update bonus: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * UPDATE POTONGAN:
+     * Mendukung multi-input nominal & keterangan dengan format mendetail (Nominal) Keterangan.
+     */
+    public function updatePotongan(Request $request)
+    {
+        $request->validate([
+            'target_type' => 'required|in:karyawan,divisi,jabatan',
+            'bulan' => 'required|integer',
+            'tahun' => 'required|integer',
+            'potongan_nominal' => 'required|array',
+            'potongan_nominal.*' => 'required|numeric|min:0',
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $totalInputPotongan = array_sum($request->potongan_nominal);
+            
+            $items = [];
+            foreach($request->potongan_nominal as $idx => $nom) {
+                $ket = $request->potongan_keterangan[$idx] ?? 'Potongan';
+                $items[] = "(" . number_format($nom, 0, ',', '.') . ") " . $ket;
+            }
+            $keteranganBaruStr = implode(" | ", $items);
+
+            $query = Karyawan::query();
+            if ($request->target_type === 'karyawan') {
+                $query->where('id', $request->karyawan_id);
+            } elseif ($request->target_type === 'divisi') {
+                $query->where('divisi_id', $request->divisi_id);
+            } elseif ($request->target_type === 'jabatan') {
+                $query->where('divisi_id', $request->divisi_id)->where('jabatan', $request->jabatan);
+            }
+
+            $karyawanIds = $query->pluck('id');
+
+            foreach ($karyawanIds as $id) {
+                $history = PayrollHistory::firstOrNew([
+                    'karyawan_id' => $id,
+                    'bulan' => $request->bulan,
+                    'tahun' => $request->tahun
+                ]);
+
+                $history->potongan_gaji = ($history->potongan_gaji ?? 0) + $totalInputPotongan;
+                $history->keterangan_potongan = $history->keterangan_potongan 
+                    ? $history->keterangan_potongan . " | " . $keteranganBaruStr 
+                    : $keteranganBaruStr;
+
+                if (!$history->exists) {
+                    $k = Karyawan::find($id);
+                    $history->gaji_pokok_nominal = $k->gaji_pokok;
+                    $history->gaji_divisi_snapshot = $k->divisi ? $k->divisi->getGajiJabatan($k->jabatan) : 0;
+                    $history->rate_absensi_per_jam = $k->hourly_rate ?? 25000;
+                    $history->tunjangan_per_tanggungan = $k->tunjangan_per_tanggungan;
+                    $history->jumlah_tanggungan_snapshot = $k->jumlah_tanggungan;
+                }
+                $history->save();
+            }
+
+            DB::commit();
+            return back()->with('success', 'Potongan berhasil dicatat secara mendetail.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->with('error', 'Gagal update potonogan: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * MENGHAPUS SATU ITEM BONUS/POTONGAN SPESIFIK:
+     * Menghapus item berdasarkan index string agar nominal total ikut berkurang.
+     */
+    public function deleteItem(Request $request)
+    {
+        $request->validate([
+            'karyawan_id' => 'required',
+            'bulan' => 'required',
+            'tahun' => 'required',
+            'type' => 'required|in:bonus,potongan',
+            'index' => 'required|integer'
+        ]);
+
+        try {
+            DB::beginTransaction();
+            $history = PayrollHistory::where([
+                'karyawan_id' => $request->karyawan_id,
+                'bulan' => $request->bulan,
+                'tahun' => $request->tahun
+            ])->first();
+
+            if ($history) {
+                $fieldKet = $request->type == 'bonus' ? 'keterangan_bonus' : 'keterangan_potongan';
+                $fieldNom = $request->type == 'bonus' ? 'bonus_tambahan' : 'potongan_gaji';
+
+                $items = explode(' | ', $history->$fieldKet);
+                
+                if (isset($items[$request->index])) {
+                    // Ekstrak nominal dari string "(1.000.000) Keterangan"
+                    preg_match('/\((.*?)\)/', $items[$request->index], $matches);
+                    if (isset($matches[1])) {
+                        $nominalHapus = (float) str_replace('.', '', $matches[1]);
+                        $history->$fieldNom -= $nominalHapus;
+                    }
+
+                    // Hapus item dari array
+                    unset($items[$request->index]);
+                    
+                    // Update string keterangan
+                    $history->$fieldKet = count($items) > 0 ? implode(' | ', $items) : null;
+                    $history->save();
+                }
+            }
+
+            DB::commit();
+            return back()->with('success', 'Item berhasil dihapus.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->with('error', 'Gagal menghapus item: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -203,58 +396,6 @@ class PayrollController extends Controller
     }
 
     /**
-     * Update Bonus Tambahan.
-     */
-    public function updateBonus(Request $request)
-    {
-        $request->validate([
-            'karyawan_id' => 'required|exists:karyawans,id',
-            'bonus'       => 'required|numeric|min:0',
-            'bulan'       => 'required|integer',
-            'tahun'       => 'required|integer',
-        ]);
-
-        try {
-            $karyawan = Karyawan::findOrFail($request->karyawan_id);
-            
-            $this->syncSnapshot($karyawan, $request->bulan, $request->tahun, [
-                'bonus_tambahan' => $request->bonus,
-                'keterangan'     => 'Bonus ditambahkan manual'
-            ]);
-
-            return redirect()->back()->with('success', 'Bonus karyawan berhasil diperbarui.');
-        } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'Gagal update bonus: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Update Potongan Gaji.
-     */
-    public function updatePotongan(Request $request)
-    {
-        $request->validate([
-            'karyawan_id' => 'required|exists:karyawans,id',
-            'potongan'    => 'required|numeric|min:0',
-            'bulan'       => 'required|integer',
-            'tahun'       => 'required|integer',
-        ]);
-
-        try {
-            $karyawan = Karyawan::findOrFail($request->karyawan_id);
-            
-            $this->syncSnapshot($karyawan, $request->bulan, $request->tahun, [
-                'potongan_gaji' => $request->potongan,
-                'keterangan'    => 'Potongan diinput manual'
-            ]);
-
-            return redirect()->back()->with('success', 'Potongan gaji berhasil diperbarui.');
-        } catch (\Exception $e) {
-            return redirect()->back()->with('error', 'Gagal update potongan: ' . $e->getMessage());
-        }
-    }
-
-    /**
      * Update Massal Gaji Jabatan per Divisi.
      */
     public function updateGajiJabatan(Request $request)
@@ -324,6 +465,67 @@ class PayrollController extends Controller
     }
 
     /**
+     * AJAX: Mengambil detail bonus/potongan yang sudah ada untuk list hapus
+     */
+    public function getDetails(Request $request)
+    {
+        $query = Karyawan::query();
+        if ($request->target_type === 'karyawan') {
+            $query->where('id', $request->karyawan_id);
+        } elseif ($request->target_type === 'divisi') {
+            $query->where('divisi_id', $request->divisi_id);
+        } elseif ($request->target_type === 'jabatan') {
+            $query->where('divisi_id', $request->divisi_id)->where('jabatan', $request->jabatan);
+        }
+
+        $karyawanId = $query->first()?->id;
+        if (!$karyawanId) return response()->json(['bonus' => [], 'potongan' => []]);
+
+        $history = PayrollHistory::where('karyawan_id', $karyawanId)
+            ->where('bulan', $request->bulan)
+            ->where('tahun', $request->tahun)
+            ->first();
+
+        // Memecah string "(10.000) Ket | (20.000) Ket" menjadi array
+        $parse = function($string) {
+            if (!$string) return [];
+            return array_map('trim', explode('|', $string));
+        };
+
+        return response()->json([
+            'bonus' => $parse($history?->keterangan_bonus),
+            'potongan' => $parse($history?->keterangan_potongan)
+        ]);
+    }
+
+    /**
+     * MENGHAPUS / RESET PAYROLL PER PERIODE (Agar kembali ke Draft)
+     */
+    public function destroy(Request $request)
+    {
+        $request->validate([
+            'bulan' => 'required|integer',
+            'tahun' => 'required|integer',
+            'karyawan_id' => 'nullable|exists:karyawans,id'
+        ]);
+
+        try {
+            $query = PayrollHistory::where('bulan', $request->bulan)
+                                    ->where('tahun', $request->tahun);
+
+            if ($request->filled('karyawan_id')) {
+                $query->where('karyawan_id', $request->karyawan_id);
+            }
+
+            $query->delete();
+
+            return redirect()->back()->with('success', 'Data snapshot payroll periode tersebut berhasil dihapus (Kembali ke Draft).');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal menghapus data: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Mengunci (Lock) Seluruh Data Payroll Periode Terpilih.
      */
     public function lockAll(Request $request)
@@ -366,7 +568,9 @@ class PayrollController extends Controller
             'bonus_tambahan'             => $existing ? $existing->bonus_tambahan : 0,
             'potongan_gaji'              => $existing ? $existing->potongan_gaji : 0,
             'jumlah_tanggungan_snapshot' => $existing ? ($existing->jumlah_tanggungan_snapshot > 0 ? $existing->jumlah_tanggungan_snapshot : $karyawan->jumlah_tanggungan) : ($karyawan->jumlah_tanggungan ?? 0),
-            'keterangan'                 => 'Updated via Payroll Manager'
+            'keterangan_bonus'           => $existing ? $existing->keterangan_bonus : null,
+            'keterangan_potongan'        => $existing ? $existing->keterangan_potongan : null,
+            'keterangan'                 => $existing ? $existing->keterangan : 'Updated via Payroll Manager'
         ], $overrides);
 
         return PayrollHistory::updateOrCreate(
@@ -375,9 +579,6 @@ class PayrollController extends Controller
         );
     }
 
-    /**
-     * Mengambil daftar jabatan dari JSON divisi (Untuk AJAX di View)
-     */
     public function getJabatanByDivisi($divisiId)
     {
         $divisi = Divisi::find($divisiId);
@@ -385,9 +586,6 @@ class PayrollController extends Controller
         return response()->json(array_keys($divisi->daftar_jabatan));
     }
 
-    /**
-     * Mengunci (Lock) Payroll Karyawan secara satuan.
-     */
     public function lockPayroll(Request $request, $karyawanId)
     {
         $bulan = (int)$request->input('bulan', now()->month);
@@ -401,17 +599,11 @@ class PayrollController extends Controller
         return redirect()->back()->with('success', "Payroll " . $karyawan->nama . " berhasil dikunci.");
     }
 
-    /**
-     * Halaman Slip Gaji untuk Karyawan (Self Service)
-     */
     public function slipSaya() 
     { 
         return view('karyawan.slip-gaji'); 
     }
 
-    /**
-     * Fitur Export Data Payroll
-     */
     public function export() 
     { 
         return redirect()->back()->with('info', 'Fitur export sedang dikembangkan.'); 

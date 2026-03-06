@@ -119,7 +119,6 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
         /**
          * CONFIG GLOBAL (Tunjangan & Rate Absensi)
          */
-        // Simpan Parameter Snapshot Global
         Route::post('/config', [PayrollController::class, 'store'])->name('payroll.config');
         Route::post('/update-tunjangan', [PayrollController::class, 'store'])->name('payroll.update_tunjangan');
         Route::post('/update-global-rate', [PayrollController::class, 'updateRateAbsensi'])->name('payroll.update_rate_absensi');
@@ -127,21 +126,26 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
         /**
          * UPDATE DATA MASSAL / GRUP
          */
-        // Update Gaji Pokok per Jabatan di dalam Divisi
         Route::post('/update-gaji-jabatan', [PayrollController::class, 'updateGajiJabatan'])->name('payroll.update_gaji_jabatan');
         
         /**
-         * UPDATE DATA INDIVIDU
+         * UPDATE DATA INDIVIDU & AJAX
          */
+        // Ambil detail bonus/potongan yang sudah ada via AJAX
+        Route::get('/get-details', [PayrollController::class, 'getDetails'])->name('payroll.get_details');
+
         // Update Gaji Pokok / Rate Individu (Handled by update method)
         Route::post('/update-rate', [PayrollController::class, 'update'])->name('payroll.update_hourly_rate');
         Route::post('/update-gaji-pokok', [PayrollController::class, 'update'])->name('payroll.update_gaji_pokok');
         
-        // Update Bonus Tambahan Individu
+        // Update Bonus Tambahan (Individu/Grup)
         Route::post('/update-bonus', [PayrollController::class, 'updateBonus'])->name('payroll.update_bonus');
 
-        // Update Potongan Gaji (Denda/Kasbon) Individu
+        // Update Potongan Gaji (Individu/Grup)
         Route::post('/update-potongan', [PayrollController::class, 'updatePotongan'])->name('payroll.update_potongan');
+
+        // Menghapus Item Bonus/Potongan Tertentu (Misal: menghapus b1 saja)
+        Route::post('/delete-item', [PayrollController::class, 'deleteItem'])->name('payroll.delete_item');
 
         // Update Jumlah Tanggungan Keluarga Individu
         Route::post('/update-tanggungan', [PayrollController::class, 'updateTanggungan'])->name('payroll.update_tanggungan');
@@ -151,6 +155,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
          */
         Route::post('/lock/{id}', [PayrollController::class, 'lockPayroll'])->name('payroll.lock');
         Route::post('/lock-all', [PayrollController::class, 'lockAll'])->name('payroll.lock_all');
+        Route::delete('/destroy', [PayrollController::class, 'destroy'])->name('payroll.destroy'); // Reset Periode
         Route::get('/export', [PayrollController::class, 'export'])->name('payroll.export');
 
         /**
