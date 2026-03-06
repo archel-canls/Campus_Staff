@@ -124,9 +124,9 @@
                     <thead>
                         <tr class="bg-slate-50/50 border-b border-slate-100">
                             <th class="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Identitas Staf</th>
-                            <th class="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Waktu Masuk</th>
-                            <th class="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Status Kehadiran</th>
-                            <th class="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Waktu Keluar</th>
+                            <th class="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400">Waktu Masuk & Lokasi</th>
+                            <th class="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Status</th>
+                            <th class="px-8 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400 text-right">Waktu Keluar & Lokasi</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
@@ -177,10 +177,19 @@
                             </td>
                             <td class="px-8 py-6">
                                 @if($abs)
-                                    <span class="font-black text-cdi text-lg tracking-tighter">{{ $abs->jam_masuk->format('H:i') }}</span>
-                                    <p class="text-[8px] font-bold text-slate-400 uppercase italic">Terverifikasi</p>
+                                    <div class="flex flex-col">
+                                        <span class="font-black text-cdi text-lg tracking-tighter">{{ $abs->jam_masuk->format('H:i') }}</span>
+                                        <div class="flex items-start mt-1 max-w-[250px]">
+                                            <i class="fas fa-location-dot text-[8px] text-cdi-orange mt-1 mr-1"></i>
+                                            <span class="text-[7px] font-bold text-slate-500 uppercase leading-tight address-lookup" 
+                                                  data-lat="{{ $abs->latitude }}" 
+                                                  data-lng="{{ $abs->longitude }}">
+                                                <i class="fas fa-spinner fa-spin mr-1"></i> Mencari Lokasi Masuk...
+                                            </span>
+                                        </div>
+                                    </div>
                                 @elseif($izin)
-                                    <span class="px-3 py-1 rounded-lg bg-blue-50 text-blue-600 text-[8px] font-black uppercase border border-blue-100 italic">Disetujui Admin</span>
+                                    <span class="px-3 py-1 rounded-lg bg-blue-50 text-blue-600 text-[8px] font-black uppercase border border-blue-100 italic">Izin Disetujui</span>
                                 @else
                                     <span class="font-black text-slate-200 text-lg tracking-tighter">--:--</span>
                                 @endif
@@ -210,11 +219,14 @@
                                         <span class="font-black {{ $statusPulang == 'lembur' ? 'text-blue-600' : 'text-cdi-orange' }} text-lg tracking-tighter">
                                             {{ \Carbon\Carbon::parse($abs->jam_keluar)->format('H:i') }}
                                         </span>
-                                        @if($statusPulang == 'lembur')
-                                            <span class="px-2 py-0.5 bg-blue-100 text-blue-700 text-[7px] font-black uppercase rounded italic">Lembur +{{ $txtLembur }}</span>
-                                        @else
-                                            <p class="text-[8px] font-bold text-slate-400 uppercase italic">Selesai Tugas</p>
-                                        @endif
+                                        <div class="flex items-start mt-1 max-w-[250px] justify-end">
+                                            <span class="text-[7px] font-bold text-slate-500 uppercase leading-tight text-right address-lookup" 
+                                                  data-lat="{{ $abs->latitude_keluar ?? $abs->latitude }}" 
+                                                  data-lng="{{ $abs->longitude_keluar ?? $abs->longitude }}">
+                                                <i class="fas fa-spinner fa-spin mr-1"></i> Mencari Lokasi Pulang...
+                                            </span>
+                                            <i class="fas fa-location-dot text-[8px] text-blue-500 mt-1 ml-1"></i>
+                                        </div>
                                     </div>
                                 @elseif($statusPulang == 'alpha_keluar')
                                     <div class="flex flex-col items-end">
@@ -351,6 +363,57 @@
         </div>
     </div>
 </div>
+
+<script>
+    /**
+     * MENGUBAH KOORDINAT MENJADI ALAMAT TEKS (REVERSE GEOCODING)
+     * Format: Jalan/Dukuh, Desa/Kelurahan, Kecamatan, Kota/Kabupaten, Negara
+     */
+    async function reverseGeocode() {
+        const elements = document.querySelectorAll('.address-lookup');
+        
+        for (const el of elements) {
+            const lat = el.getAttribute('data-lat');
+            const lng = el.getAttribute('data-lng');
+
+            if (lat && lng && lat !== '0' && lng !== '0') {
+                try {
+                    // Menggunakan Nominatim OpenStreetMap (Gratis)
+                    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, {
+                        headers: { 'Accept-Language': 'id' }
+                    });
+                    const data = await response.json();
+                    
+                    if (data.address) {
+                        const addr = data.address;
+                        
+                        // Menyusun alamat sesuai permintaan: Detail Jalan -> Desa -> Kec -> Kota -> Negara
+                        const cleanLabel = [
+                            addr.road || addr.suburb || addr.pedestrian || '', // Jalan / Dukuh
+                            addr.village || addr.neighbourhood || addr.hamlet || '', // Desa / Kelurahan
+                            addr.city_district || addr.municipality || '', // Kecamatan
+                            addr.city || addr.regency || '', // Kota / Kabupaten
+                            addr.country || '' // Negara
+                        ].filter(Boolean).join(', ');
+
+                        el.innerText = cleanLabel.toUpperCase() || 'LOKASI TIDAK DIKENAL';
+                    } else {
+                        el.innerText = 'KOORDINAT: ' + lat + ', ' + lng;
+                    }
+                } catch (error) {
+                    el.innerText = 'GAGAL MEMUAT LOKASI';
+                }
+                
+                // Delay 1.2 detik per request untuk mematuhi Kebijakan Nominatim (Rate Limit)
+                await new Promise(r => setTimeout(r, 1200));
+            } else {
+                el.innerText = '-';
+            }
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', reverseGeocode);
+</script>
 
 <style>
     @media print {

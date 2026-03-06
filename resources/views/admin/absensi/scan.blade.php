@@ -26,7 +26,6 @@
         .bg-cdi-orange { background-color: #FF8C00; }
         .text-cdi-orange { color: #FF8C00; }
 
-        /* Pattern Overlay */
         .id-card-pattern {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -120,7 +119,6 @@
             </div>
 
             <div class="p-8 flex flex-col items-center">
-                {{-- Area Kamera --}}
                 <div class="w-full aspect-square max-w-[340px] bg-slate-900 rounded-[2.5rem] p-2 shadow-2xl relative overflow-hidden mb-8 border-4 border-slate-100">
                     <div id="reader" class="w-full h-full"></div>
                     
@@ -138,7 +136,6 @@
                     </div>
                 </div>
 
-                {{-- Manual Input --}}
                 <div class="w-full flex space-x-2">
                     <input type="text" id="manual-nip" placeholder="ENTER NIP / BARCODE MANUALLY" 
                         class="flex-1 bg-slate-100 border-2 border-slate-100 rounded-2xl px-6 py-4 text-center text-xs font-black text-cdi outline-none focus:border-cdi-orange transition-all uppercase tracking-widest placeholder:text-slate-400">
@@ -160,8 +157,9 @@
                         <h4 id="res-nama" class="text-base font-black text-cdi uppercase italic leading-none">Memproses...</h4>
                         <p id="res-nip" class="text-[10px] font-bold text-cdi-orange tracking-[0.2em] mt-1.5 uppercase">-</p>
                         
-                        <p id="res-lokasi" class="text-[8px] font-bold text-slate-500 uppercase mt-1 leading-tight max-w-[200px]">
-                            <i class="fas fa-map-marker-alt text-cdi-orange"></i> Menjemput Lokasi...
+                        {{-- Lokasi detail sesuai format permintaan --}}
+                        <p id="res-lokasi" class="text-[8px] font-bold text-slate-500 uppercase mt-1 leading-tight max-w-[250px]">
+                             Menjemput Lokasi...
                         </p>
 
                         <div class="flex items-center mt-2 space-x-3">
@@ -190,7 +188,6 @@
         </div>
     </div>
 
-    {{-- Audio --}}
     <audio id="beep-success" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3" preload="auto"></audio>
     <audio id="beep-error" src="https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.mp3" preload="auto"></audio>
 
@@ -200,7 +197,6 @@
         let isProcessing = false;
         let html5QrCode = null;
 
-        // Clock & Date
         function updateDateTime() {
             const now = new Date();
             const days = ['MINGGU', 'SENIN', 'SELASA', 'RABU', 'KAMIS', 'JUMAT', 'SABTU'];
@@ -212,7 +208,6 @@
         setInterval(updateDateTime, 1000);
         updateDateTime();
 
-        // Switch Mode
         function setMode(mode) {
             currentMode = mode;
             const statusBar = document.getElementById('status-bar');
@@ -233,7 +228,6 @@
             }
         }
 
-        // Camera Logic
         async function startCamera() {
             const config = { fps: 30, qrbox: { width: 250, height: 250 }, aspectRatio: 1.0 };
             try {
@@ -250,47 +244,50 @@
         }
 
         /**
-         * REVERSE GEOCODING FUNCTION
-         * Mengambil Nama Negara dan Alamat Detail dari Koordinat
+         * REVERSE GEOCODING TERPERINCI
+         * Mengambil Nama Negara sampai ke level Desa/Jalan (Sesuai riwayat blade)
          */
         async function getAddressDetail(lat, lng) {
             if (!lat || !lng) return "Lokasi tidak terdeteksi";
             try {
                 const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`);
                 const data = await response.json();
+                const addr = data.address;
                 
-                // Format: Country, City, Road/Sub-district
-                const country = data.address.country || "";
-                const city = data.address.city || data.address.town || data.address.state || "";
-                const road = data.address.road || data.address.suburb || "";
-                
-                return `${country}, ${city}, ${road}`.toUpperCase();
+                // Menentukan komponen alamat secara spesifik
+                const road = addr.road || addr.suburb || ""; // Jalan atau Area
+                const village = addr.village || addr.neighbourhood || addr.hamlet || ""; // Desa/Kelurahan
+                const district = addr.city_district || addr.county || ""; // Kecamatan
+                const city = addr.city || addr.town || addr.state || ""; // Kota
+                const country = addr.country || ""; // Negara
+
+                // Format sesuai permintaan: , Mangunharjo,Tamansari hils, Tembalang, Semarang, Indonesia
+                // Kita gabung yang tersedia saja
+                const parts = [road, village, district, city, country].filter(part => part !== "");
+                return parts.join(", ").toUpperCase();
+
             } catch (error) {
-                return "Koordinat: " + lat.toFixed(4) + ", " + lng.toFixed(4);
+                return "KOORDINAT: " + lat.toFixed(4) + ", " + lng.toFixed(4);
             }
         }
 
-        /**
-         * Submission Logic with Geolocation
-         */
         function submitAbsensi(nip, mode) {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     async (position) => {
                         const lat = position.coords.latitude;
                         const lng = position.coords.longitude;
-                        // Dapatkan nama lokasi dulu
                         const locationName = await getAddressDetail(lat, lng);
                         sendData(nip, mode, lat, lng, locationName);
                     },
                     (error) => {
-                        console.warn("Geolocation failed or denied.");
-                        sendData(nip, mode, null, null, "Lokasi Offline/Ditolak");
+                        console.warn("Geolocation failed.");
+                        sendData(nip, mode, null, null, "LOKASI OFFLINE/DITOLAK");
                     },
                     { enableHighAccuracy: true, timeout: 5000 }
                 );
             } else {
-                sendData(nip, mode, null, null, "Geolocation Not Supported");
+                sendData(nip, mode, null, null, "GEOLOCATION NOT SUPPORTED");
             }
         }
 
@@ -346,7 +343,7 @@
             document.getElementById('res-nama').innerText = data.nama || 'UNKNOWN';
             document.getElementById('res-nip').innerText = data.nip || '000000';
             document.getElementById('res-waktu').innerText = data.waktu || '--:--';
-            document.getElementById('res-lokasi').innerHTML = `<i class="fas fa-map-marker-alt text-cdi-orange"></i> ${data.lokasi}`;
+            document.getElementById('res-lokasi').innerHTML = `<i class="fas fa-location-arrow text-cdi-orange mr-1"></i> ${data.lokasi}`;
             
             const badge = document.getElementById('res-tipe-badge');
             const iconBg = document.getElementById('res-icon-bg');

@@ -10,6 +10,7 @@ return new class extends Migration
      * Run the migrations.
      * File ini menciptakan tabel absensis lengkap dengan kolom jam_masuk dan jam_keluar.
      * UPDATE: Menambahkan dukungan koordinat GPS (latitude & longitude) untuk pelacakan lokasi.
+     * Tidak ada fitur yang dikurangi, kolom koordinat menggunakan presisi tinggi (decimal).
      */
     public function up(): void
     {

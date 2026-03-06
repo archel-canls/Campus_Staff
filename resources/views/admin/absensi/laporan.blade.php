@@ -107,10 +107,10 @@
                         $hariKerjaBerlalu = 0;
 
                         $liburBulanIni = \App\Models\HariLibur::whereYear('tanggal', $targetTahun)
-                                            ->whereMonth('tanggal', $targetBulan)
-                                            ->pluck('tanggal')
-                                            ->map(fn($t) => \Carbon\Carbon::parse($t)->format('Y-m-d'))
-                                            ->toArray();
+                                                    ->whereMonth('tanggal', $targetBulan)
+                                                    ->pluck('tanggal')
+                                                    ->map(fn($t) => \Carbon\Carbon::parse($t)->format('Y-m-d'))
+                                                    ->toArray();
 
                         for($d=1; $d<=$totalHari; $d++) {
                             $checkDate = \Carbon\Carbon::create($targetTahun, $targetBulan, $d)->startOfDay();
@@ -142,7 +142,6 @@
                         $skor = ($hariKerjaBerlalu > 0) ? round(($hadirCount / $hariKerjaBerlalu) * 100) : 100;
                         $color = $skor >= 80 ? 'green' : ($skor >= 50 ? 'orange' : 'red');
                     @endphp
-                    {{-- Row Utama dengan data-attribute untuk filter --}}
                     <tr class="hover:bg-slate-50/50 transition-all group person-row" 
                         data-nama="{{ strtoupper($row->nama) }}" 
                         data-nip="{{ $row->nip }}" 
@@ -185,7 +184,7 @@
                         </td>
                     </tr>
 
-                    {{-- DETAIL HARIAN (Selalu sembunyi saat filter mencari) --}}
+                    {{-- DETAIL HARIAN --}}
                     <tr id="detail-{{ $row->id }}" class="hidden detail-row bg-slate-50/30">
                         <td colspan="4" class="px-8 py-8">
                             <div class="bg-white rounded-[2rem] border border-slate-100 shadow-inner overflow-hidden p-6">
@@ -199,8 +198,8 @@
                                     <thead>
                                         <tr class="text-slate-400 font-black uppercase tracking-tighter text-left">
                                             <th class="pb-3 w-32">Tanggal</th>
-                                            <th class="pb-3">Masuk</th>
-                                            <th class="pb-3">Pulang</th>
+                                            <th class="pb-3">Data Masuk & Lokasi</th>
+                                            <th class="pb-3">Data Pulang & Lokasi</th>
                                             <th class="pb-3 text-right">Status</th>
                                         </tr>
                                     </thead>
@@ -216,17 +215,40 @@
                                                 $izinHariIni = $row->perizinans->where('status', 'disetujui')->first(fn($i) => $currentDate->between(\Carbon\Carbon::parse($i->tanggal_mulai), \Carbon\Carbon::parse($i->tanggal_selesai)));
                                             @endphp
                                             <tr class="{{ ($isSunday || $isLibur) ? 'bg-red-50/30' : '' }}">
-                                                <td class="py-3 font-bold {{ ($isSunday || $isLibur) ? 'text-red-500' : 'text-cdi' }}">
+                                                <td class="py-4 font-bold {{ ($isSunday || $isLibur) ? 'text-red-500' : 'text-cdi' }}">
                                                     {{ $currentDate->translatedFormat('d M Y') }}
                                                     <span class="block text-[7px] font-medium text-slate-400 uppercase leading-none">{{ $currentDate->translatedFormat('l') }}</span>
                                                 </td>
-                                                <td class="py-3 font-black text-slate-600 italic">
-                                                    {{ $absensiHariIni ? \Carbon\Carbon::parse($absensiHariIni->jam_masuk)->format('H:i') : '--:--' }}
+                                                <td class="py-4">
+                                                    @if($absensiHariIni)
+                                                        <div class="font-black text-slate-600 italic">{{ \Carbon\Carbon::parse($absensiHariIni->jam_masuk)->format('H:i') }}</div>
+                                                        @if($absensiHariIni->latitude && $absensiHariIni->longitude)
+                                                            <div class="text-[7px] text-slate-400 font-bold uppercase mt-1 address-loader" 
+                                                                 data-lat="{{ $absensiHariIni->latitude }}" 
+                                                                 data-lng="{{ $absensiHariIni->longitude }}">
+                                                                <i class="fas fa-spinner fa-spin mr-1"></i> Mencari Lokasi...
+                                                            </div>
+                                                        @endif
+                                                    @else
+                                                        <span class="text-slate-300">--:--</span>
+                                                    @endif
                                                 </td>
-                                                <td class="py-3 font-black text-slate-600 italic">
-                                                    {{ ($absensiHariIni && $absensiHariIni->jam_keluar) ? \Carbon\Carbon::parse($absensiHariIni->jam_keluar)->format('H:i') : '--:--' }}
+                                                <td class="py-4">
+                                                    @if($absensiHariIni && $absensiHariIni->jam_keluar)
+                                                        <div class="font-black text-slate-600 italic">{{ \Carbon\Carbon::parse($absensiHariIni->jam_keluar)->format('H:i') }}</div>
+                                                        {{-- Lokasi saat pulang --}}
+                                                        @if($absensiHariIni->latitude && $absensiHariIni->longitude)
+                                                            <div class="text-[7px] text-slate-400 font-bold uppercase mt-1 address-loader" 
+                                                                 data-lat="{{ $absensiHariIni->latitude }}" 
+                                                                 data-lng="{{ $absensiHariIni->longitude }}">
+                                                                <i class="fas fa-spinner fa-spin mr-1"></i> Mencari Lokasi...
+                                                            </div>
+                                                        @endif
+                                                    @else
+                                                        <span class="text-slate-300">--:--</span>
+                                                    @endif
                                                 </td>
-                                                <td class="py-3 text-right">
+                                                <td class="py-4 text-right">
                                                     @if($absensiHariIni)
                                                         <span class="px-2 py-0.5 rounded bg-green-100 text-green-600 font-black uppercase italic text-[8px]">Hadir</span>
                                                     @elseif($izinHariIni)
@@ -248,7 +270,6 @@
                     </tr>
                     @endforeach
 
-                    {{-- No Results State --}}
                     <tr id="noResultsRow" class="hidden">
                         <td colspan="4" class="px-8 py-20 text-center">
                             <i class="fas fa-user-slash text-4xl text-slate-200 mb-4 block"></i>
@@ -337,9 +358,13 @@
                     visibleCount++;
                 } else {
                     row.style.display = 'none';
-                    // Sembunyikan detail row jika baris utamanya disembunyikan
-                    const detailId = row.querySelector('button').getAttribute('onclick').match(/'([^']+)'/)[1];
-                    document.getElementById(detailId).classList.add('hidden');
+                    const button = row.querySelector('button');
+                    if (button) {
+                        const match = button.getAttribute('onclick').match(/'([^']+)'/);
+                        if (match) {
+                            document.getElementById(match[1]).classList.add('hidden');
+                        }
+                    }
                 }
             });
 
@@ -349,7 +374,52 @@
         searchInput.addEventListener('input', performFilter);
         filterDivisi.addEventListener('change', performFilter);
         filterJabatan.addEventListener('change', performFilter);
+
+        // Inisialisasi Address Loading
+        loadAllAddresses();
     });
+
+    /**
+     * MENGUBAH KOORDINAT MENJADI ALAMAT TEKS (REVERSE GEOCODING)
+     * Target Format: Jalan, Desa, Kecamatan, Kota, Negara
+     */
+    async function loadAllAddresses() {
+        const loaders = document.querySelectorAll('.address-loader');
+        
+        for (const el of loaders) {
+            const lat = el.dataset.lat;
+            const lng = el.dataset.lng;
+
+            try {
+                // Menggunakan API Nominatim OpenStreetMap (Gratis)
+                const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, {
+                    headers: { 'Accept-Language': 'id' }
+                });
+                const data = await response.json();
+                
+                if (data.display_name) {
+                    const addr = data.address;
+                    // Menyusun alamat sesuai permintaan: Detail Jalan -> Desa -> Kec -> Kota -> Negara
+                    const cleanLabel = [
+                        addr.road || addr.suburb || '',
+                        addr.village || addr.neighbourhood || addr.hamlet || '',
+                        addr.city_district || addr.municipality || '',
+                        addr.city || addr.regency || '',
+                        addr.country || ''
+                    ].filter(Boolean).join(', ');
+
+                    el.innerHTML = `<i class="fas fa-location-dot text-blue-500 mr-1"></i> ${cleanLabel.toUpperCase()}`;
+                } else {
+                    el.innerHTML = `<i class="fas fa-map-marker-alt text-slate-300 mr-1"></i> LOKASI TIDAK DIKENAL`;
+                }
+            } catch (error) {
+                el.innerHTML = `<i class="fas fa-exclamation-triangle text-orange-400 mr-1"></i> GAGAL MEMUAT ALAMAT`;
+            }
+            
+            // Delay 1.2 detik per request untuk mematuhi Kebijakan Nominatim (Rate Limit)
+            await new Promise(r => setTimeout(r, 1200));
+        }
+    }
 
     function toggleDetail(id) {
         const row = document.getElementById(id);
@@ -360,13 +430,14 @@
         const content = document.getElementById(id).innerHTML;
         const printWindow = window.open('', '', 'height=600,width=800');
         printWindow.document.write('<html><head><title>Cetak Laporan - ' + name + '</title>');
-        printWindow.document.write('<style>body{font-family:sans-serif;padding:20px;} table{width:100%;border-collapse:collapse;} th,td{border:1px solid #eee;padding:10px;text-align:left;} .print\\:hidden{display:none;}</style>');
+        printWindow.document.write('<style>body{font-family:sans-serif;padding:20px;} table{width:100%;border-collapse:collapse;} th,td{border:1px solid #eee;padding:10px;text-align:left;} .print\\:hidden{display:none;} .address-loader i { color: #3b82f6; }</style>');
         printWindow.document.write('</head><body>');
         printWindow.document.write('<h2 style="text-align:center">LAPORAN KEHADIRAN: ' + name + '</h2>');
         printWindow.document.write(content);
         printWindow.document.write('</body></html>');
         printWindow.document.close();
-        printWindow.print();
+        printWindow.focus();
+        setTimeout(() => { printWindow.print(); }, 800);
     }
 </script>
 
@@ -379,9 +450,10 @@
         .detail-row { display: table-row !important; }
         header, aside, .print\:hidden, nav, .fixed { display: none !important; }
         .bg-white { border: none !important; box-shadow: none !important; }
-        body { background: white !important; }
+        body { background: white !important; padding: 0 !important; margin: 0 !important; }
         .rounded-\[3rem\], .rounded-\[2rem\] { border-radius: 0.5rem !important; border: 1px solid #eee !important; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        .space-y-8 { space-y: 0 !important; }
     }
 </style>
 @endsection

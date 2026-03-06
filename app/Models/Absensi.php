@@ -87,10 +87,12 @@ class Absensi extends Model
     /**
      * Helper: Menghasilkan link Google Maps berdasarkan koordinat GPS yang tersimpan.
      * Memungkinkan Admin untuk mengklik link dan langsung melihat lokasi karyawan saat scan.
+     * Menggunakan format URL standar Google Maps untuk akurasi terbaik.
      */
     public function getGoogleMapsLinkAttribute()
     {
         if ($this->latitude && $this->longitude) {
+            // Menghasilkan link yang jika diklik langsung membuka titik koordinat di Google Maps
             return "https://www.google.com/maps?q={$this->latitude},{$this->longitude}";
         }
         return null;
