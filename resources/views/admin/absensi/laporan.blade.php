@@ -442,7 +442,7 @@
 </script>
 
 <style>
-    .text-green-600 { color: #16a34a; } .bg-green-500 { background-color: #22c55e; }
+    .text-green-600 { color: #16a34a; } .bg-green-500 { background-color: #22c55e; }        
     .text-orange-600 { color: #ea580c; } .bg-orange-500 { background-color: #f97316; }
     .text-red-600 { color: #dc2626; } .bg-red-500 { background-color: #ef4444; }
 

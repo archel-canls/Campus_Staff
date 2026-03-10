@@ -88,12 +88,13 @@ class DatabaseSeeder extends Seeder
             $divisiIds[$d['nama']] = $createdDivisi->id;
         }
 
-        // 2. BUAT AKUN NON-KARYAWAN
+        // 2. BUAT AKUN NON-KARYAWAN (Otomatis Aktif)
         User::updateOrCreate(['username' => 'admin'], [
             'name' => 'Administrator CDI',
             'email' => 'admin@cdi.id',
             'password' => Hash::make('password123'),
             'role' => 'admin',
+            'is_active' => true,
         ]);
 
         User::updateOrCreate(['username' => 'scanner1'], [
@@ -101,6 +102,7 @@ class DatabaseSeeder extends Seeder
             'email' => 'scanner@cdi.id',
             'password' => Hash::make('password123'),
             'role' => 'scanner',
+            'is_active' => true,
         ]);
 
         // 3. DATA KARYAWAN
@@ -130,7 +132,7 @@ class DatabaseSeeder extends Seeder
                 'gaji_custom_februari' => 3000000 
             ],
             [
-                'nama' => 'Reza Kurniawan', // Karyawan Spesifik Absensi
+                'nama' => 'Reza Kurniawan', 
                 'username' => 'reza',
                 'nip' => '260219505004', 
                 'nik' => '3301234567890004',
@@ -214,7 +216,7 @@ class DatabaseSeeder extends Seeder
                 $ratePerJam = ($currentMonth == 2) ? 30000 : 25000;
                 $tunjanganPerKepala = ($currentMonth == 2) ? 300000 : 200000;
 
-                // A. Simpan Profil Karyawan[cite: 25]
+                // A. Simpan Profil Karyawan
                 $karyawan = Karyawan::updateOrCreate(
                     ['nik' => $data['nik']], 
                     [
@@ -244,7 +246,7 @@ class DatabaseSeeder extends Seeder
                     ]
                 );
 
-                // B. Simpan Akun User[cite: 23]
+                // B. Simpan Akun User (is_active diset true agar data seeder bisa langsung login)
                 User::updateOrCreate(
                     ['username' => strtolower($data['username'])],
                     [
@@ -253,6 +255,7 @@ class DatabaseSeeder extends Seeder
                         'password' => Hash::make('password123'), 
                         'role' => 'karyawan',
                         'karyawan_id' => $karyawan->id,
+                        'is_active' => true, // User dari seeder dianggap sudah dikonfirmasi
                     ]
                 );
 
@@ -308,7 +311,7 @@ class DatabaseSeeder extends Seeder
         }
         
         $this->command->info('✅ Database Full Seeder Selesai!');
-        $this->command->info("- Anggota IT Terbaru: Reza Kurniawan (Senior Developer) telah ditambahkan.");
-        $this->command->info("- Absensi Spesifik: Reza Kurniawan telah tercatat absen 20 Feb & Kemarin (08:00 - 16:00).");
+        $this->command->info("- Akun Master & Karyawan telah diset 'is_active' => true (Siap Digunakan).");
+        $this->command->info("- Pendaftar baru melalui form Registrasi otomatis akan memerlukan konfirmasi Admin.");
     }
 }

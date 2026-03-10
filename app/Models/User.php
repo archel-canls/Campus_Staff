@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $email
  * @property string $password
  * @property string $role
+ * @property bool $is_active
  * @property int|null $karyawan_id
  * @property-read \App\Models\Karyawan|null $karyawan
  */
@@ -31,6 +32,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role',       // 'admin', 'karyawan', atau 'scanner'
+        'is_active',  // Status persetujuan admin
         'karyawan_id',
     ];
 
@@ -49,6 +51,7 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'password' => 'hashed', 
+        'is_active' => 'boolean',
         'karyawan_id' => 'integer',
     ];
 
@@ -100,6 +103,14 @@ class User extends Authenticatable
     public function isScanner(): bool
     {
         return $this->role === 'scanner';
+    }
+
+    /**
+     * Mempermudah pengecekan status akun aktif.
+     */
+    public function isActive(): bool
+    {
+        return (bool) $this->is_active;
     }
 
     /*

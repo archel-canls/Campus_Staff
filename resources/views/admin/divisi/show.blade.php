@@ -4,32 +4,35 @@
 
 @section('content')
 <div class="space-y-10 pb-20" x-data="{ 
-    showMemberModal: false, 
-    showJobModal: false,
-    searchQuery: '',
-    filterJabatan: '',
-    // Data karyawan diparsing ke JSON untuk Alpine.js
-    members: {{ $divisi->karyawans->map(function($k) {
-        return [
-            'id' => $k->id,
-            'nama' => $k->nama,
-            'nip' => $k->nip,
-            'jabatan' => $k->jabatan ?? 'General Staff',
-            'initial' => strtoupper(substr($k->nama, 0, 1)),
-            'hapus_url' => route('divisi.hapus-anggota', $k->id)
-        ];
-    })->toJson() }},
-    
-    // Fungsi Filter Otomatis
-    get filteredMembers() {
-        return this.members.filter(m => {
-            const matchesSearch = m.nama.toLowerCase().includes(this.searchQuery.toLowerCase()) || 
-                                  m.nip.toLowerCase().includes(this.searchQuery.toLowerCase());
-            const matchesJabatan = this.filterJabatan === '' || m.jabatan === this.filterJabatan;
-            return matchesSearch && matchesJabatan;
-        });
-    }
-}">
+        showMemberModal: false, 
+        showJobModal: false,
+        showEditJobModal: false,
+        selectedMember: { id: '', nama: '', jabatan: '' },
+        searchQuery: '',
+        filterJabatan: '',
+        // Data karyawan diparsing ke JSON untuk Alpine.js
+        members: {{ $divisi->karyawans->map(function($k) {
+            return [
+                'id' => $k->id,
+                'nama' => $k->nama,
+                'nip' => $k->nip,
+                'jabatan' => $k->jabatan ?? 'General Staff',
+                'initial' => strtoupper(substr($k->nama, 0, 1)),
+                'hapus_url' => route('divisi.hapus-anggota', $k->id)
+            ];
+        })->toJson() }},
+        
+        // Fungsi Filter Otomatis
+        get filteredMembers() {
+            return this.members.filter(m => {
+                const matchesSearch = m.nama.toLowerCase().includes(this.searchQuery.toLowerCase()) || 
+                                      m.nip.toLowerCase().includes(this.searchQuery.toLowerCase());
+                const matchesJabatan = this.filterJabatan === '' || m.jabatan === this.filterJabatan;
+                return matchesSearch && matchesJabatan;
+            });
+        }
+    }">
+
     {{-- Header --}}
     <div class="flex flex-col md:flex-row md:items-center gap-8">
         <a href="{{ route('divisi.index') }}" class="w-16 h-16 bg-white border-2 border-slate-100 rounded-[1.5rem] flex items-center justify-center text-cdi hover:bg-cdi hover:text-white transition-all shadow-sm">
@@ -109,13 +112,13 @@
                 </button>
             </div>
 
-            <div class="bg-white rounded-[3.5rem] border-2 border-slate-100 shadow-sm overflow-hidden">
+            <div class="bg-white rounded-[3.5rem] border-2 border-slate-100 shadow-sm overflow-visible">
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-slate-50/50 border-b-2 border-slate-100">
                             <th class="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nama / NIP</th>
                             <th class="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Jabatan</th>
-                            <th class="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Opsi</th>
+                            <th class="px-10 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y-2 divide-slate-50">
@@ -134,13 +137,35 @@
                                 <td class="px-10 py-8 text-center">
                                     <span class="px-4 py-2 bg-slate-900 text-white text-[9px] font-black uppercase italic rounded-xl tracking-widest shadow-lg" x-text="k.jabatan"></span>
                                 </td>
-                                <td class="px-10 py-8 text-right">
-                                    <form :action="k.hapus_url" method="POST">
-                                        @csrf
-                                        <button type="submit" onclick="return confirm('Keluarkan dari divisi?')" class="w-10 h-10 bg-slate-100 text-slate-300 rounded-xl hover:bg-red-500 hover:text-white transition-all">
-                                            <i class="fas fa-user-minus text-[10px]"></i>
+                                <td class="px-10 py-8 text-right overflow-visible">
+                                    {{-- Menu Dropdown Interaktif (Titik 3) --}}
+                                    <div class="relative inline-block text-left" x-data="{ open: false }">
+                                        <button @click="open = !open" @click.away="open = false" class="w-10 h-10 bg-slate-100 text-slate-400 rounded-xl hover:bg-cdi hover:text-white transition-all">
+                                            <i class="fas fa-ellipsis-v"></i>
                                         </button>
-                                    </form>
+
+                                        <div x-show="open" 
+                                             x-transition:enter="transition ease-out duration-100"
+                                             x-transition:enter-start="transform opacity-0 scale-95"
+                                             x-transition:enter-end="transform opacity-100 scale-100"
+                                             class="absolute right-0 mt-2 w-48 origin-top-right bg-white rounded-2xl shadow-2xl border border-slate-100 z-[90] overflow-hidden" 
+                                             x-cloak>
+                                            <div class="py-2">
+                                                <button @click="selectedMember = k; showEditJobModal = true; open = false" 
+                                                        class="w-full text-left px-6 py-3 text-[10px] font-black uppercase text-slate-600 hover:bg-slate-50 hover:text-cdi transition-colors flex items-center gap-3">
+                                                    <i class="fas fa-id-badge text-blue-500"></i> Ganti Jabatan
+                                                </button>
+                                                
+                                                <form :action="k.hapus_url" method="POST" class="w-full">
+                                                    @csrf
+                                                    <button type="submit" onclick="return confirm('Keluarkan dari divisi?')" 
+                                                            class="w-full text-left px-6 py-3 text-[10px] font-black uppercase text-red-500 hover:bg-red-50 transition-colors flex items-center gap-3">
+                                                        <i class="fas fa-sign-out-alt"></i> Keluarkan dari Divisi
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </td>
                             </tr>
                         </template>
@@ -191,7 +216,7 @@
                         <div class="flex gap-3 items-center">
                             <input type="text" name="nama_jabatan[]" x-model="row.nama" placeholder="Nama Jabatan" class="flex-1 bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-xs font-black uppercase outline-none focus:border-cdi">
                             <input type="number" name="kuota_jabatan[]" x-model="row.kuota" min="1" class="w-24 bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-4 text-xs font-black outline-none focus:border-cdi">
-                            <button type="button" @click="removeRow(index)" class="w-12 h-12 text-red-400 hover:text-red-600">
+                            <button type="button" @click="removeRow(index)" class="w-12 h-12 text-red-400 hover:text-red-600 transition-colors">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
@@ -210,19 +235,21 @@
         </div>
     </div>
 
-    {{-- MODAL TAMBAH ANGGOTA --}}
+    {{-- MODAL TAMBAH ANGGOTA (Dengan Search Filter) --}}
     <div x-show="showMemberModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm" x-cloak x-transition>
-        <div class="bg-white w-full max-w-md rounded-[3rem] shadow-2xl p-12" @click.away="showMemberModal = false">
+        <div class="bg-white w-full max-w-md rounded-[3rem] shadow-2xl p-12" x-data="{ searchKaryawan: '' }">
             <h3 class="text-2xl font-black text-cdi uppercase italic mb-8">Tambah <span class="text-cdi-orange">Personel</span></h3>
             
             <form action="{{ route('divisi.tambah-anggota', $divisi->id) }}" method="POST" class="space-y-6">
                 @csrf
                 <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Pilih Karyawan</label>
-                    <select name="karyawan_id" required class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-xs font-black outline-none appearance-none focus:border-cdi">
-                        <option value="">-- PILIH --</option>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">Cari & Pilih Karyawan</label>
+                    <input type="text" x-model="searchKaryawan" placeholder="Ketik nama karyawan..." class="w-full bg-slate-50 border-2 border-slate-100 rounded-t-2xl px-6 py-3 text-[10px] font-black uppercase outline-none focus:border-cdi">
+                    <select name="karyawan_id" required size="5" class="w-full bg-white border-2 border-t-0 border-slate-100 rounded-b-2xl px-4 py-2 text-xs font-black outline-none appearance-none cursor-pointer">
                         @foreach(\App\Models\Karyawan::whereNull('divisi_id')->orderBy('nama')->get() as $kt)
-                            <option value="{{ $kt->id }}">{{ $kt->nama }}</option>
+                            <option x-show="'{{ strtolower($kt->nama) }}'.includes(searchKaryawan.toLowerCase())" value="{{ $kt->id }}" class="py-2 px-2 hover:bg-slate-50 rounded-lg">
+                                {{ strtoupper($kt->nama) }} ({{ $kt->nip }})
+                            </option>
                         @endforeach
                     </select>
                 </div>
@@ -243,6 +270,33 @@
                 <div class="pt-4 flex gap-3">
                     <button type="submit" class="flex-1 bg-cdi text-white py-5 rounded-2xl font-black uppercase italic text-xs tracking-widest hover:bg-cdi-orange transition-all shadow-xl">Konfirmasi</button>
                     <button type="button" @click="showMemberModal = false" class="px-8 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-[9px]">Batal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {{-- MODAL UBAH JABATAN --}}
+    <div x-show="showEditJobModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm" x-cloak x-transition>
+        <div class="bg-white w-full max-w-md rounded-[3rem] shadow-2xl p-12">
+            <h3 class="text-2xl font-black text-cdi uppercase italic mb-2">Ubah <span class="text-cdi-orange">Jabatan</span></h3>
+            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-8" x-text="selectedMember.nama"></p>
+            
+            <form :action="'{{ url('admin/divisi-action') }}/' + '{{ $divisi->id }}' + '/tambah-anggota'" method="POST" class="space-y-6">
+                @csrf
+                <input type="hidden" name="karyawan_id" :value="selectedMember.id">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Pilih Jabatan Baru</label>
+                    <select name="jabatan" required class="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-xs font-black outline-none focus:border-cdi">
+                        @foreach($divisi->daftar_jabatan ?? [] as $jab => $data)
+                            <option value="{{ $jab }}" :selected="selectedMember.jabatan == '{{ $jab }}'">
+                                {{ strtoupper($jab) }}
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="pt-4 flex gap-3">
+                    <button type="submit" class="flex-1 bg-cdi text-white py-5 rounded-2xl font-black uppercase italic text-xs tracking-widest hover:bg-cdi-orange transition-all shadow-xl">Simpan Perubahan</button>
+                    <button type="button" @click="showEditJobModal = false" class="px-8 bg-slate-100 text-slate-400 rounded-2xl font-black uppercase text-[9px]">Batal</button>
                 </div>
             </form>
         </div>

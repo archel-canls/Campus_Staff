@@ -83,7 +83,14 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
         return view('admin.dashboard');
     })->name('admin.dashboard');
 
-    // CRUD Karyawan (Data Personel Lengkap)
+    // --- MANAJEMEN KARYAWAN & PERSONEL ---
+    // Rute Tambahan untuk Permohonan Akun (Diletakkan sebelum resource agar tidak bentrok)
+    Route::get('/manajemen-karyawan/permohonan', [ManajemenKaryawanController::class, 'permohonan'])
+        ->name('manajemen-karyawan.permohonan');
+    Route::post('/manajemen-karyawan/approve/{id}', [ManajemenKaryawanController::class, 'approve'])
+        ->name('manajemen-karyawan.approve');
+
+    // CRUD Utama Karyawan
     Route::resource('manajemen-karyawan', ManajemenKaryawanController::class);
     
     // Custom action untuk download ID Card & Kelola Password dari sisi Admin

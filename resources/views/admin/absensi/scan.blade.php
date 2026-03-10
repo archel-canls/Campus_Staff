@@ -399,4 +399,4 @@
         document.addEventListener("DOMContentLoaded", startCamera);
     </script>
 </body>
-</html>
+</html> 

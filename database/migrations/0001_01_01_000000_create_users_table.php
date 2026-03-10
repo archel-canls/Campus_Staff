@@ -8,7 +8,7 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
-     * Membuat tabel users sebagai entitas autentikasi utama.
+     * Membuat tabel users sebagai entitas autentikasi utama dengan fitur konfirmasi admin.
      */
     public function up(): void
     {
@@ -29,6 +29,14 @@ return new class extends Migration
              * - 'scanner': Akses terbatas hanya untuk halaman scanner barcode.
              */
             $table->enum('role', ['admin', 'karyawan', 'scanner'])->default('karyawan');
+
+            /**
+             * Status Aktivasi Akun:
+             * Digunakan untuk sistem pendaftaran yang memerlukan konfirmasi admin.
+             * - false (0): Menunggu konfirmasi (default saat registrasi).
+             * - true (1): Akun aktif dan diizinkan login.
+             */
+            $table->boolean('is_active')->default(false);
             
             /**
              * Relasi ke tabel karyawans:

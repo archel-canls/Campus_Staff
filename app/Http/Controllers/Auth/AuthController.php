@@ -27,6 +27,7 @@ class AuthController extends Controller
 
     /**
      * Proses autentikasi login.
+     * Dimodifikasi untuk mengecek status is_active.
      */
     public function login(Request $request)
     {
@@ -44,6 +45,14 @@ class AuthController extends Controller
         if ($user) {
             // Cek apakah password cocok
             if (Hash::check($request->password, $user->password)) {
+                
+                // PERUBAHAN: Cek apakah akun sudah diaktifkan oleh admin
+                if (!$user->is_active) {
+                    return back()->withErrors([
+                        'username' => 'Akun Anda belum dikonfirmasi oleh Admin. Silakan hubungi bagian HRD atau cek berkala.',
+                    ])->withInput($request->only('username'));
+                }
+
                 Auth::login($user, $request->has('remember'));
                 $request->session()->regenerate();
                 
@@ -87,7 +96,8 @@ class AuthController extends Controller
 
     /**
      * Proses pendaftaran personel baru.
-     * Mendukung format NIP 12-Digit (YYMM-G-YYMM-RRR).
+     * Dimodifikasi agar akun baru berstatus is_active = false dan tidak login otomatis.
+     * Jabatan dan Divisi dikosongkan (null) untuk ditentukan Admin nantinya.
      */
     public function register(Request $request)
     {
@@ -194,11 +204,12 @@ class AuthController extends Controller
                 'emergency_2_telp'      => $request->emergency_2_telp,
 
                 // Default Values & Logic
+                // PERUBAHAN: Divisi dan Jabatan di-set null agar kosong sebelum diverifikasi Admin
                 'tanggal_masuk'         => now()->format('Y-m-d'),
-                'divisi'                => 'Pending',
-                'jabatan'               => 'Staff',
+                'divisi_id'             => null, 
+                'jabatan'               => null, 
                 'barcode_token'         => 'BC-' . $request->nip,
-                'gaji_pokok'            => in_array($request->status, ['tetap', 'kontrak']) ? 4500000 : 0,
+                'gaji_pokok'            => 0, // Gaji di-set 0, nanti dihitung saat Admin menentukan jabatan
             ]);
 
             // 4. Simpan ke tabel Users
@@ -209,15 +220,13 @@ class AuthController extends Controller
                 'password'    => Hash::make($request->password), 
                 'role'        => 'karyawan',
                 'karyawan_id' => $karyawan->id,
+                'is_active'   => false, 
             ]);
 
             DB::commit();
 
-            // 5. Login otomatis setelah registrasi berhasil
-            Auth::login($user);
-            $request->session()->regenerate();
-
-            return redirect()->route('karyawan.dashboard')->with('success', 'Registrasi berhasil! Selamat bergabung.');
+            // Pendaftar diarahkan kembali ke login dengan pesan sukses verifikasi.
+            return redirect()->route('login')->with('success', 'Registrasi berhasil! Akun Anda sedang diverifikasi oleh Admin. Silakan cek berkala.');
 
         } catch (\Exception $e) {
             DB::rollBack();
