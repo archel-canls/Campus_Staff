@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Mail;
+use Carbon\Carbon;
 
 class AuthController extends Controller
 {
@@ -21,13 +23,13 @@ class AuthController extends Controller
         if (Auth::check()) {
             return $this->redirectBasedOnRole(Auth::user());
         }
-        
+
         return view('auth.login');
     }
 
     /**
      * Proses autentikasi login.
-     * Dimodifikasi untuk mengecek status is_active.
+     * Mengecek kecocokan kredensial dan status aktivasi akun.
      */
     public function login(Request $request)
     {
@@ -45,8 +47,8 @@ class AuthController extends Controller
         if ($user) {
             // Cek apakah password cocok
             if (Hash::check($request->password, $user->password)) {
-                
-                // PERUBAHAN: Cek apakah akun sudah diaktifkan oleh admin
+
+                // Proteksi: Cek apakah akun sudah diaktifkan oleh admin
                 if (!$user->is_active) {
                     return back()->withErrors([
                         'username' => 'Akun Anda belum dikonfirmasi oleh Admin. Silakan hubungi bagian HRD atau cek berkala.',
@@ -55,10 +57,10 @@ class AuthController extends Controller
 
                 Auth::login($user, $request->has('remember'));
                 $request->session()->regenerate();
-                
+
                 return $this->redirectBasedOnRole($user);
             }
-            
+
             // Jika password salah
             return back()->withErrors([
                 'username' => 'Password yang Anda masukkan salah.',
@@ -72,14 +74,16 @@ class AuthController extends Controller
     }
 
     /**
-     * Helper Function: Redirect berdasarkan Role.
+     * Helper Function: Redirect berdasarkan Role setelah login.
      */
     protected function redirectBasedOnRole($user)
     {
         if ($user->role === 'admin') {
             return redirect()->intended(route('admin.dashboard'));
+        } elseif ($user->role === 'scanner') {
+            return redirect()->intended(route('absensi.scan'));
         }
-        
+
         return redirect()->intended(route('karyawan.dashboard'));
     }
 
@@ -94,10 +98,154 @@ class AuthController extends Controller
         return view('auth.register');
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | FITUR OTP VERIFIKASI (EMAIL REGISTRASI)
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Mengirim kode OTP ke email pendaftar untuk validasi kepemilikan email.
+     */
+    public function sendOtp(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email|unique:users,email'
+        ], [
+            'email.unique' => 'Email sudah terdaftar dalam sistem.'
+        ]);
+
+        $otp = rand(100000, 999999);
+
+        // Simpan data OTP di session sementara (Berlaku 5 Menit)
+        session([
+            'register_otp'   => $otp,
+            'otp_email'      => $request->email,
+            'otp_expires_at' => Carbon::now()->addMinutes(5)
+        ]);
+
+        try {
+            Mail::raw("Kode OTP verifikasi Anda untuk pendaftaran di CDI Staff Management adalah: $otp. Kode ini berlaku selama 5 menit. Jangan berikan kode ini kepada siapapun.", function ($message) use ($request) {
+                $message->to($request->email)->subject('Kode OTP Verifikasi Registrasi CDI');
+            });
+
+            return response()->json(['success' => true]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Gagal mengirim email: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Verifikasi kode OTP yang diinputkan user pada modal pendaftaran.
+     */
+    public function verifyOtp(Request $request)
+    {
+        $sessionOtp = session('register_otp');
+        $expiresAt  = session('otp_expires_at');
+
+        if ($sessionOtp && $request->otp == $sessionOtp && Carbon::now()->lessThan($expiresAt)) {
+            return response()->json(['success' => true]);
+        }
+
+        return response()->json(['success' => false, 'message' => 'Kode OTP salah atau telah kedaluwarsa.']);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | FITUR LUPA USERNAME & PASSWORD
+    |--------------------------------------------------------------------------
+    */
+
+    /**
+     * Menangani permintaan awal Lupa Username atau Lupa Password.
+     */
+    public function handleForgotFetch(Request $request)
+    {
+        $request->validate(['email' => 'required|email']);
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user) {
+            return response()->json(['success' => false, 'message' => 'Email tidak ditemukan dalam sistem.']);
+        }
+
+        if ($request->type === 'username') {
+            try {
+                Mail::raw("Halo {$user->name}, Username Anda untuk login di CDI Staff adalah: {$user->username}", function ($message) use ($user) {
+                    $message->to($user->email)->subject('Informasi Username Akun CDI');
+                });
+                return response()->json(['success' => true]);
+            } catch (\Exception $e) {
+                return response()->json(['success' => false, 'message' => 'Gagal mengirim email username.']);
+            }
+        } else {
+            // Lupa Password: Kirim OTP ke database users (kolom reset_otp_code)
+            $otp = rand(100000, 999999);
+            $user->update([
+                'reset_otp_code' => $otp,
+                'reset_otp_expires_at' => Carbon::now()->addMinutes(10)
+            ]);
+
+            try {
+                Mail::raw("Kode OTP Reset Password Anda: $otp. Berlaku 10 menit. Masukkan kode ini pada aplikasi untuk melanjutkan reset password.", function ($message) use ($user) {
+                    $message->to($user->email)->subject('Kode Reset Password CDI');
+                });
+                return response()->json(['success' => true]);
+            } catch (\Exception $e) {
+                return response()->json(['success' => false, 'message' => 'Gagal mengirim email OTP reset.']);
+            }
+        }
+    }
+
+    /**
+     * Verifikasi OTP Reset Password.
+     */
+    public function verifyResetOtp(Request $request)
+    {
+        $user = User::where('email', $request->email)
+            ->where('reset_otp_code', $request->otp)
+            ->where('reset_otp_expires_at', '>', Carbon::now())
+            ->first();
+
+        if ($user) {
+            return response()->json(['success' => true]);
+        }
+
+        return response()->json(['success' => false, 'message' => 'Kode OTP tidak valid atau kedaluwarsa.']);
+    }
+
+    /**
+     * Finalisasi perubahan password baru.
+     */
+    public function finalizeReset(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'password' => 'required|string|min:8|confirmed'
+        ]);
+
+        $user = User::where('email', $request->email)->first();
+
+        if ($user) {
+            $user->update([
+                'password' => Hash::make($request->password),
+                'reset_otp_code' => null,
+                'reset_otp_expires_at' => null
+            ]);
+            return response()->json(['success' => true]);
+        }
+
+        return response()->json(['success' => false]);
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | PROSES REGISTRASI FINAL
+    |--------------------------------------------------------------------------
+    */
+
     /**
      * Proses pendaftaran personel baru.
-     * Dimodifikasi agar akun baru berstatus is_active = false dan tidak login otomatis.
-     * Jabatan dan Divisi dikosongkan (null) untuk ditentukan Admin nantinya.
+     * Menggabungkan data Profil Karyawan dan Akun User dalam satu transaksi.
      */
     public function register(Request $request)
     {
@@ -105,7 +253,7 @@ class AuthController extends Controller
             // Identitas Utama
             'name'                  => 'required|string|max:255',
             'nik'                   => 'required|string|size:16|unique:karyawans,nik',
-            'nip'                   => 'required|string|digits:12|unique:karyawans,nip', 
+            'nip'                   => 'required|string|unique:karyawans,nip',
             'tempat_lahir'          => 'required|string|max:255',
             'tanggal_lahir'         => 'required|date',
             'jenis_kelamin'         => 'required|in:L,P',
@@ -117,7 +265,7 @@ class AuthController extends Controller
             'telepon'               => 'required|string|max:20',
 
             // Jalur Pendaftaran & Pendidikan
-            'status'                => 'required|string', 
+            'status'                => 'required|string',
             'instansi'              => 'nullable|string|max:255',
             'pendidikan_terakhir'   => 'nullable|string',
             'status_pendidikan'     => 'nullable|string',
@@ -142,7 +290,6 @@ class AuthController extends Controller
         ], [
             'nik.size'               => 'NIK harus berjumlah 16 digit.',
             'nik.unique'             => 'NIK sudah terdaftar dalam sistem.',
-            'nip.digits'             => 'NIP harus berjumlah tepat 12 digit.',
             'nip.unique'             => 'NIP sudah terdaftar, silakan coba kirim ulang form.',
             'username.unique'        => 'Username sudah digunakan.',
             'email.unique'           => 'Email sudah terdaftar.',
@@ -158,21 +305,21 @@ class AuthController extends Controller
         $namaBukti = null;
 
         try {
-            // 1. Handling Upload Foto Profil
+            // 1. Upload Foto Profil
             if ($request->hasFile('foto')) {
                 $file = $request->file('foto');
                 $namaFoto = $request->nip . '_profil_' . time() . '.' . $file->getClientOriginalExtension();
                 $file->storeAs('karyawan/foto', $namaFoto, 'public');
             }
 
-            // 2. Handling Upload Bukti Tanggungan
+            // 2. Upload Bukti Tanggungan
             if ($request->hasFile('bukti_tanggungan')) {
                 $fileBukti = $request->file('bukti_tanggungan');
                 $namaBukti = $request->nip . '_bukti_' . time() . '.' . $fileBukti->getClientOriginalExtension();
                 $fileBukti->storeAs('karyawan/bukti_tanggungan', $namaBukti, 'public');
             }
 
-            // 3. Simpan ke tabel Karyawan
+            // 3. Simpan ke tabel Karyawan (Data Profil)
             $karyawan = Karyawan::create([
                 'nama'                  => $request->name,
                 'nik'                   => $request->nik,
@@ -187,69 +334,66 @@ class AuthController extends Controller
                 'status'                => $request->status,
                 'instansi'              => $request->instansi,
                 'pendidikan_terakhir'   => $request->pendidikan_terakhir,
+                'status_pendidikan'     => $request->status_pendidikan,
                 'foto'                  => $namaFoto,
-                
-                // Field Tanggungan
+
+                // Tanggungan
                 'jumlah_tanggungan'     => $request->jumlah_tanggungan ?? 0,
                 'bukti_tanggungan'      => $namaBukti,
-                
-                // Kontak Darurat 1
+
+                // Kontak Darurat
                 'emergency_1_nama'      => $request->emergency_1_nama,
                 'emergency_1_hubungan'  => $request->emergency_1_hubungan,
                 'emergency_1_telp'      => $request->emergency_1_telp,
-                
-                // Kontak Darurat 2
                 'emergency_2_nama'      => $request->emergency_2_nama,
                 'emergency_2_hubungan'  => $request->emergency_2_hubungan,
                 'emergency_2_telp'      => $request->emergency_2_telp,
 
-                // Default Values & Logic
-                // PERUBAHAN: Divisi dan Jabatan di-set null agar kosong sebelum diverifikasi Admin
+                // Default Values (Ditetapkan Admin kemudian)
                 'tanggal_masuk'         => now()->format('Y-m-d'),
-                'divisi_id'             => null, 
-                'jabatan'               => null, 
-                'barcode_token'         => 'BC-' . $request->nip,
-                'gaji_pokok'            => 0, // Gaji di-set 0, nanti dihitung saat Admin menentukan jabatan
+                'divisi_id'             => null,
+                'jabatan'               => null,
+                'barcode_token'         => $request->nip,
+                'gaji_pokok'            => 0,
             ]);
 
-            // 4. Simpan ke tabel Users
-            $user = User::create([
-                'name'        => $request->name,
-                'username'    => strtolower($request->username),
-                'email'       => $request->email,
-                'password'    => Hash::make($request->password), 
-                'role'        => 'karyawan',
-                'karyawan_id' => $karyawan->id,
-                'is_active'   => false, 
+            // 4. Simpan ke tabel Users (Data Akun Login)
+            User::create([
+                'name'           => $request->name,
+                'username'       => strtolower($request->username),
+                'email'          => $request->email,
+                'password'       => Hash::make($request->password),
+                'role'           => 'karyawan',
+                'karyawan_id'    => $karyawan->id,
+                'is_active'      => false, // Menunggu persetujuan admin
+                'otp_code'       => session('register_otp'), // Mencatat OTP registrasi terakhir
+                'otp_expires_at' => session('otp_expires_at'),
             ]);
+
+            // Bersihkan Session OTP setelah berhasil mendaftar
+            session()->forget(['register_otp', 'otp_email', 'otp_expires_at']);
 
             DB::commit();
 
-            // Pendaftar diarahkan kembali ke login dengan pesan sukses verifikasi.
-            return redirect()->route('login')->with('success', 'Registrasi berhasil! Akun Anda sedang diverifikasi oleh Admin. Silakan cek berkala.');
-
+            return redirect()->route('login')->with('success', 'Pendaftaran Berhasil! Akun Anda sedang diverifikasi oleh Admin. Silakan tunggu konfirmasi.');
         } catch (\Exception $e) {
             DB::rollBack();
-            
-            // Cleanup: Hapus file jika database gagal menyimpan
-            if ($namaFoto) {
-                Storage::disk('public')->delete('karyawan/foto/' . $namaFoto);
-            }
-            if ($namaBukti) {
-                Storage::disk('public')->delete('karyawan/bukti_tanggungan/' . $namaBukti);
-            }
 
-            return back()->withErrors(['error' => 'Sistem gagal memproses pendaftaran: ' . $e->getMessage()])->withInput();
+            // Hapus file jika database gagal menyimpan untuk menghemat storage
+            if ($namaFoto) Storage::disk('public')->delete('karyawan/foto/' . $namaFoto);
+            if ($namaBukti) Storage::disk('public')->delete('karyawan/bukti_tanggungan/' . $namaBukti);
+
+            return back()->withErrors(['error' => 'Gagal mendaftar: ' . $e->getMessage()])->withInput();
         }
     }
 
     /**
-     * Proses logout.
+     * Proses logout user.
      */
     public function logout(Request $request)
     {
         Auth::logout();
-        
+
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 

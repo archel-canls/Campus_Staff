@@ -45,9 +45,9 @@ class AbsensiController extends Controller
              * 3. Barcode Token dengan prefix 'BC-'
              */
             $karyawan = Karyawan::where('nip', $request->nip)
-                                ->orWhere('barcode_token', $request->nip)
-                                ->orWhere('barcode_token', 'BC-' . $request->nip)
-                                ->first();
+                ->orWhere('barcode_token', $request->nip)
+                ->orWhere('barcode_token', 'BC-' . $request->nip)
+                ->first();
 
             if (!$karyawan) {
                 return response()->json([
@@ -57,21 +57,20 @@ class AbsensiController extends Controller
             }
 
             // --- PENCATATAN LOKASI (TANPA PEMBATASAN RADIUS) ---
-            // Logika validasi $distance > $radiusMeter telah dihapus agar bisa absen di mana saja.
             // Koordinat $request->lat dan $request->lng akan langsung disimpan ke database.
 
             $jamSekarang = Carbon::now();
             $hariIni = Carbon::today();
-            $tipe = $request->tipe ?? 'masuk'; 
-            
+            $tipe = $request->tipe ?? 'masuk';
+
             // Batas jam masuk kantor (08:00)
             $jamMasukKantor = Carbon::today()->setHour(8)->setMinute(0)->setSecond(0);
-            
+
             // ================= LOGIKA ABSEN MASUK =================
             if ($tipe === 'masuk') {
                 $sudahMasuk = Absensi::where('karyawan_id', $karyawan->id)
-                                    ->whereDate('jam_masuk', $hariIni)
-                                    ->first();
+                    ->whereDate('jam_masuk', $hariIni)
+                    ->first();
 
                 if ($sudahMasuk) {
                     return response()->json([
@@ -96,7 +95,7 @@ class AbsensiController extends Controller
                     'karyawan_id' => $karyawan->id,
                     'jam_masuk'   => $jamSekarang,
                     'keterangan'  => $keterangan,
-                    'latitude'    => $request->lat, 
+                    'latitude'    => $request->lat,
                     'longitude'   => $request->lng,
                 ]);
 
@@ -116,8 +115,8 @@ class AbsensiController extends Controller
             // ================= LOGIKA ABSEN KELUAR =================
             if ($tipe === 'keluar') {
                 $absensi = Absensi::where('karyawan_id', $karyawan->id)
-                                    ->whereDate('jam_masuk', $hariIni)
-                                    ->first();
+                    ->whereDate('jam_masuk', $hariIni)
+                    ->first();
 
                 if (!$absensi) {
                     return response()->json([
@@ -145,24 +144,155 @@ class AbsensiController extends Controller
                     ]
                 ]);
             }
-
         } catch (\Exception $e) {
             return response()->json(['status' => 'error', 'message' => 'Sistem Error: ' . $e->getMessage()], 500);
         }
     }
 
     /**
-     * Helper: Hitung jarak antara dua koordinat (Haversine Formula).
-     * Tetap dipertahankan jika sewaktu-waktu dibutuhkan kembali untuk reporting.
+     * Tambah Absensi Manual oleh Admin (Individu).
      */
-    private function calculateDistance($lat1, $lon1, $lat2, $lon2)
+    public function storeManual(Request $request)
     {
-        $earthRadius = 6371000; // meter
-        $dLat = deg2rad($lat2 - $lat1);
-        $dLon = deg2rad($lon2 - $lon1);
-        $a = sin($dLat/2) * sin($dLat/2) + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLon/2) * sin($dLon/2);
-        $c = 2 * atan2(sqrt($a), sqrt(1-$a));
-        return $earthRadius * $c;
+        $request->validate([
+            'karyawan_id' => 'required|exists:karyawans,id',
+            'tanggal'     => 'required|date',
+            'jam_masuk'   => 'required',
+            'jam_keluar'  => 'nullable',
+            'keterangan'  => 'required|string',
+        ]);
+
+        $jamMasukFull = $request->tanggal . ' ' . $request->jam_masuk;
+        $jamKeluarFull = $request->jam_keluar ? ($request->tanggal . ' ' . $request->jam_keluar) : null;
+
+        Absensi::create([
+            'karyawan_id' => $request->karyawan_id,
+            'jam_masuk'   => $jamMasukFull,
+            'jam_keluar'  => $jamKeluarFull,
+            'keterangan'  => $request->keterangan,
+            'latitude'    => null,
+            'longitude'   => null,
+        ]);
+
+        return back()->with('success', 'Data absensi berhasil ditambahkan secara manual.');
+    }
+
+    /**
+     * Tambah Absensi Massal Manual oleh Admin (Sesuai Form di Laporan).
+     * UPDATED: Mendukung filtering berdasarkan jabatan, divisi, atau perorangan.
+     */
+    public function storeBulkManual(Request $request)
+    {
+        $request->validate([
+            'target_type'   => 'required|in:semua,perorang,perdivisi,perjabatan',
+            'tanggal_mulai' => 'required|date',
+            'jam_masuk'     => 'required',
+            'jam_keluar'    => 'nullable',
+            'keterangan'    => 'required|string',
+            'karyawan_id'   => 'required_if:target_type,perorang',
+            'divisi_id'     => 'required_if:target_type,perdivisi',
+            'jabatan'       => 'required_if:target_type,perjabatan',
+        ]);
+
+        $query = Karyawan::query();
+
+        if ($request->target_type == 'perdivisi') {
+            $query->where('divisi_id', $request->divisi_id);
+        } elseif ($request->target_type == 'perjabatan') {
+            $query->where('jabatan', $request->jabatan);
+        } elseif ($request->target_type == 'perorang') {
+            $query->where('id', $request->karyawan_id);
+        }
+
+        $karyawans = $query->get();
+        $tanggal = $request->tanggal_mulai;
+        $jamMasukFull = $tanggal . ' ' . $request->jam_masuk;
+        $jamKeluarFull = $request->jam_keluar ? ($tanggal . ' ' . $request->jam_keluar) : null;
+
+        $count = 0;
+        foreach ($karyawans as $k) {
+            // Cek duplikasi agar tidak ada absensi ganda di hari yang sama
+            $exists = Absensi::where('karyawan_id', $k->id)
+                ->whereDate('jam_masuk', $tanggal)
+                ->exists();
+
+            if (!$exists) {
+                Absensi::create([
+                    'karyawan_id' => $k->id,
+                    'jam_masuk'   => $jamMasukFull,
+                    'jam_keluar'  => $jamKeluarFull,
+                    'keterangan'  => $request->keterangan,
+                ]);
+                $count++;
+            }
+        }
+
+        return back()->with('success', "Berhasil menambahkan $count data absensi secara massal.");
+    }
+
+    /**
+     * Update Absensi (Koreksi data yang sudah ada).
+     */
+    public function update(Request $request, $id)
+    {
+        $request->validate([
+            'jam_masuk'  => 'required',
+            'jam_keluar' => 'nullable',
+            'keterangan' => 'required|string',
+        ]);
+
+        $absensi = Absensi::findOrFail($id);
+        $tanggal = Carbon::parse($absensi->jam_masuk)->format('Y-m-d');
+
+        $absensi->update([
+            'jam_masuk'  => $tanggal . ' ' . $request->jam_masuk,
+            'jam_keluar' => $request->jam_keluar ? ($tanggal . ' ' . $request->jam_keluar) : null,
+            'keterangan' => $request->keterangan,
+        ]);
+
+        return back()->with('success', 'Data absensi berhasil diperbarui.');
+    }
+
+    /**
+     * Fitur Update Cepat dari halaman Laporan (biasanya via modal/AJAX).
+     */
+    public function updateLaporanManual(Request $request)
+    {
+        $request->validate([
+            'karyawan_id' => 'required|exists:karyawans,id',
+            'tanggal'     => 'required|date',
+            'jam_masuk'   => 'required',
+            'jam_keluar'  => 'nullable',
+            'keterangan'  => 'required|string',
+        ]);
+
+        $absensi = Absensi::where('karyawan_id', $request->karyawan_id)
+            ->whereDate('jam_masuk', $request->tanggal)
+            ->first();
+
+        $data = [
+            'jam_masuk'  => $request->tanggal . ' ' . $request->jam_masuk,
+            'jam_keluar' => $request->jam_keluar ? ($request->tanggal . ' ' . $request->jam_keluar) : null,
+            'keterangan' => $request->keterangan,
+        ];
+
+        if ($absensi) {
+            $absensi->update($data);
+            return back()->with('success', 'Data absensi berhasil diperbarui.');
+        } else {
+            Absensi::create(array_merge($data, ['karyawan_id' => $request->karyawan_id]));
+            return back()->with('success', 'Data absensi baru berhasil dibuat.');
+        }
+    }
+
+    /**
+     * Hapus Absensi.
+     */
+    public function destroy($id)
+    {
+        $absensi = Absensi::findOrFail($id);
+        $absensi->delete();
+        return back()->with('success', 'Data absensi berhasil dihapus.');
     }
 
     /**
@@ -172,31 +302,30 @@ class AbsensiController extends Controller
     {
         $today = Carbon::today();
 
-        $allKaryawan = Karyawan::with(['absensis' => function($q) use ($today) {
+        $allKaryawan = Karyawan::with(['absensis' => function ($q) use ($today) {
             $q->whereDate('jam_masuk', $today);
-        }, 'perizinans' => function($q) use ($today) {
+        }, 'perizinans' => function ($q) use ($today) {
             $q->where('status', 'disetujui')
-              ->whereDate('tanggal_mulai', '<=', $today)
-              ->whereDate('tanggal_selesai', '>=', $today);
+                ->whereDate('tanggal_mulai', '<=', $today)
+                ->whereDate('tanggal_selesai', '>=', $today);
         }])->get();
 
         $perizinanPending = Perizinan::where('status', 'pending')
-                            ->with('karyawan')
-                            ->latest()
-                            ->get();
-        
+            ->with('karyawan')
+            ->latest()
+            ->get();
+
         $pendingCount = $perizinanPending->count();
 
         $historyPerizinan = Perizinan::where('status', '!=', 'pending')
-                            ->with('karyawan')
-                            ->latest()
-                            ->take(10)
-                            ->get();
+            ->with('karyawan')
+            ->latest()
+            ->get();
 
         return view('admin.absensi.riwayat', compact(
-            'allKaryawan', 
-            'perizinanPending', 
-            'historyPerizinan', 
+            'allKaryawan',
+            'perizinanPending',
+            'historyPerizinan',
             'pendingCount'
         ));
     }
@@ -222,8 +351,8 @@ class AbsensiController extends Controller
 
                 if ($today->between($mulai, $selesai)) {
                     $exists = Absensi::where('karyawan_id', $izin->karyawan_id)
-                                    ->whereDate('jam_masuk', $today)
-                                    ->exists();
+                        ->whereDate('jam_masuk', $today)
+                        ->exists();
 
                     if (!$exists) {
                         Absensi::create([
@@ -252,14 +381,14 @@ class AbsensiController extends Controller
         $bulan = $request->get('bulan', Carbon::now()->month);
         $tahun = $request->get('tahun', Carbon::now()->year);
 
-        $laporan = Karyawan::with(['absensis' => function($query) use ($bulan, $tahun) {
+        $laporan = Karyawan::with(['absensis' => function ($query) use ($bulan, $tahun) {
             $query->whereMonth('jam_masuk', $bulan)->whereYear('jam_masuk', $tahun);
-        }, 'perizinans' => function($query) use ($bulan, $tahun) {
+        }, 'perizinans' => function ($query) use ($bulan, $tahun) {
             $query->where('status', 'disetujui')
-                  ->where(function($q) use ($bulan, $tahun) {
-                      $q->whereMonth('tanggal_mulai', $bulan)->whereYear('tanggal_mulai', $tahun)
+                ->where(function ($q) use ($bulan, $tahun) {
+                    $q->whereMonth('tanggal_mulai', $bulan)->whereYear('tanggal_mulai', $tahun)
                         ->orWhereMonth('tanggal_selesai', $bulan)->whereYear('tanggal_selesai', $tahun);
-                  });
+                });
         }])->get();
 
         return view('admin.absensi.laporan', compact('laporan', 'bulan', 'tahun'));
@@ -272,13 +401,13 @@ class AbsensiController extends Controller
     {
         $user = Auth::user();
         $karyawan = Karyawan::find($user->karyawan_id);
-        
+
         if (!$karyawan) {
             return redirect()->route('login')->with('error', 'Data karyawan tidak ditemukan.');
         }
 
         $now = Carbon::now();
-        
+
         $totalHadir = Absensi::where('karyawan_id', $karyawan->id)
             ->whereMonth('jam_masuk', $now->month)
             ->whereYear('jam_masuk', $now->year)
@@ -294,6 +423,7 @@ class AbsensiController extends Controller
             ->take(7)
             ->get();
 
+        // Parameter dummy untuk estimasi tampilan
         $insentifHarian = 25000;
         $uangMakan = 15000;
         $gajiPokok = $karyawan->gaji_pokok ?? 0;
@@ -310,19 +440,19 @@ class AbsensiController extends Controller
         $user = Auth::user();
         $bulan = (int) $request->get('bulan', date('m'));
         $tahun = (int) $request->get('tahun', date('Y'));
-    
+
         $absensis = Absensi::where('karyawan_id', $user->karyawan_id)
-                    ->whereMonth('jam_masuk', $bulan)
-                    ->whereYear('jam_masuk', $tahun)
-                    ->orderBy('jam_masuk', 'desc')
-                    ->get();
-    
+            ->whereMonth('jam_masuk', $bulan)
+            ->whereYear('jam_masuk', $tahun)
+            ->orderBy('jam_masuk', 'desc')
+            ->get();
+
         $perizinans = Perizinan::where('karyawan_id', $user->karyawan_id)
-                    ->whereMonth('tanggal_mulai', $bulan)
-                    ->whereYear('tanggal_mulai', $tahun)
-                    ->latest()
-                    ->get();
-    
+            ->whereMonth('tanggal_mulai', $bulan)
+            ->whereYear('tanggal_mulai', $tahun)
+            ->latest()
+            ->get();
+
         return view('karyawan.absensi', compact('absensis', 'perizinans', 'bulan', 'tahun'));
     }
 

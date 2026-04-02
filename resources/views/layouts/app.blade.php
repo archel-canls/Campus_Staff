@@ -1,31 +1,50 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CDI-Staff - @yield('title')</title>
-    
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,700;1,800&display=swap" rel="stylesheet">
 
     <style>
-        body { font-family: 'Instrument Sans', sans-serif; }
-        [x-cloak] { display: none !important; }
-        .bg-cdi { background-color: #003366; }
-        .text-cdi { color: #003366; }
-        .bg-cdi-orange { background-color: #FF8C00; }
-        .text-cdi-orange { color: #FF8C00; }
+        body {
+            font-family: 'Instrument Sans', sans-serif;
+        }
+
+        [x-cloak] {
+            display: none !important;
+        }
+
+        .bg-cdi {
+            background-color: #003366;
+        }
+
+        .text-cdi {
+            color: #003366;
+        }
+
+        .bg-cdi-orange {
+            background-color: #FF8C00;
+        }
+
+        .text-cdi-orange {
+            color: #FF8C00;
+        }
     </style>
 </head>
+
 <body class="bg-slate-50 text-slate-900" x-data="{ sidebarOpen: true }">
 
     <div class="flex min-h-screen">
-        <aside 
-            :class="sidebarOpen ? 'w-72' : 'w-20'" 
+        <aside
+            :class="sidebarOpen ? 'w-72' : 'w-20'"
             class="bg-cdi text-white transition-all duration-300 flex flex-col shadow-xl z-50 fixed inset-y-0 left-0 lg:relative">
-            
+
             <div class="p-6 flex items-center justify-between border-b border-white/10 overflow-hidden">
                 <div class="flex items-center space-x-3" x-show="sidebarOpen">
                     <div class="w-8 h-8 bg-cdi-orange rounded-lg flex items-center justify-center shadow-lg shadow-orange-500/20">
@@ -46,10 +65,10 @@
                 <div x-show="sidebarOpen" class="mb-4 px-2">
                     <p class="text-[9px] text-white/30 font-bold uppercase tracking-[0.3em] italic">Versi Sistem 1.0.4</p>
                 </div>
-                
-                <a href="{{ route('logout') }}" 
-                   onclick="event.preventDefault(); document.getElementById('logout-form').submit();"
-                   class="flex items-center space-x-4 p-4 text-white/60 hover:text-white hover:bg-red-500/20 rounded-2xl transition-all group">
+
+                <a href="{{ route('logout') }}"
+                    onclick="event.preventDefault(); document.getElementById('logout-form').submit();"
+                    class="flex items-center space-x-4 p-4 text-white/60 hover:text-white hover:bg-red-500/20 rounded-2xl transition-all group">
                     <i class="fas fa-sign-out-alt group-hover:text-red-400"></i>
                     <span x-show="sidebarOpen" class="font-black uppercase italic text-[10px] tracking-widest">Keluar Sistem</span>
                 </a>
@@ -66,7 +85,7 @@
                         @yield('page_title', 'Dashboard')
                     </h2>
                 </div>
-                
+
                 <div class="flex items-center space-x-4">
                     <div class="text-right hidden sm:block">
                         <p class="text-xs font-black text-cdi italic uppercase leading-none">{{ Auth::user()->name }}</p>
@@ -80,9 +99,9 @@
 
             <main class="p-8 flex-1 overflow-y-auto bg-slate-50/50">
                 @if(session('success'))
-                    <div class="mb-6 p-4 bg-green-500 text-white rounded-2xl font-bold text-xs uppercase italic tracking-widest shadow-lg shadow-green-500/20">
-                        <i class="fas fa-check-circle mr-2"></i> {{ session('success') }}
-                    </div>
+                <div class="mb-6 p-4 bg-green-500 text-white rounded-2xl font-bold text-xs uppercase italic tracking-widest shadow-lg shadow-green-500/20">
+                    <i class="fas fa-check-circle mr-2"></i> {{ session('success') }}
+                </div>
                 @endif
 
                 @yield('content')
@@ -92,4 +111,5 @@
 
     @stack('scripts')
 </body>
+
 </html>

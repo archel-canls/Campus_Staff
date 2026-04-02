@@ -21,7 +21,25 @@ return new class extends Migration
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
-            
+
+            /**
+             * Fitur OTP (One-Time Password) - REGISTRASI
+             * Digunakan untuk verifikasi email saat proses registrasi.
+             * - otp_code: Menyimpan 6 digit angka unik.
+             * - otp_expires_at: Batas waktu berlaku kode OTP.
+             */
+            $table->string('otp_code', 6)->nullable();
+            $table->timestamp('otp_expires_at')->nullable();
+
+            /**
+             * Fitur OTP (One-Time Password) - LUPA PASSWORD
+             * Dibuat terpisah agar tidak bentrok dengan proses registrasi.
+             * - reset_otp_code: Kode 6 digit untuk verifikasi lupa password.
+             * - reset_otp_expires_at: Batas waktu berlaku kode reset.
+             */
+            $table->string('reset_otp_code', 6)->nullable();
+            $table->timestamp('reset_otp_expires_at')->nullable();
+
             /**
              * Role user untuk RBAC (Role Based Access Control)
              * - 'admin': Akses penuh ke dashboard, laporan, dan manajemen.
@@ -37,7 +55,7 @@ return new class extends Migration
              * - true (1): Akun aktif dan diizinkan login.
              */
             $table->boolean('is_active')->default(false);
-            
+
             /**
              * Relasi ke tabel karyawans:
              * Penting: Migration 'create_karyawans_table' harus dijalankan sebelum ini 
@@ -46,16 +64,16 @@ return new class extends Migration
              * jika data profil karyawan sedang dimanipulasi, namun tetap sinkron.
              */
             $table->foreignId('karyawan_id')
-                  ->nullable()
-                  ->constrained('karyawans')
-                  ->onDelete('set null');
-            
+                ->nullable()
+                ->constrained('karyawans')
+                ->onDelete('set null');
+
             $table->rememberToken();
             $table->timestamps();
         });
 
         // 2. Tabel: Password Reset Tokens (Standar Laravel)
-        // Digunakan untuk menyimpan token saat user melakukan permintaan "Lupa Password".
+        // Digunakan untuk menyimpan token saat user melakukan permintaan "Lupa Password" versi link.
         Schema::create('password_reset_tokens', function (Blueprint $table) {
             $table->string('email')->primary();
             $table->string('token');
@@ -68,7 +86,7 @@ return new class extends Migration
             $table->string('id')->primary();
             $table->foreignId('user_id')->nullable()->index();
             $table->string('ip_address', 45)->nullable();
-            $table->text('user_agent')->nullable();
+            $table->string('user_agent')->nullable();
             $table->longText('payload');
             $table->integer('last_activity')->index();
         });

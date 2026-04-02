@@ -23,6 +23,20 @@
 
     // Riwayat Perizinan
     $historyPerizinan = \App\Models\Perizinan::where('status', '!=', 'pending')->with(['karyawan.divisi'])->latest()->take(10)->get();
+
+    // Persiapan data Master Jabatan per Divisi untuk Alpine.js
+    $divisiJabatanMap = $divisis->mapWithKeys(function($d) {
+        $jabatans = is_array($d->daftar_jabatan) ? array_keys($d->daftar_jabatan) : [];
+        return [$d->id => $jabatans];
+    });
+
+    // Ambil semua jabatan unik untuk keperluan pencarian global
+    $karyawanJabatans = \App\Models\Karyawan::distinct()->pluck('jabatan')->filter()->toArray();
+    $masterJabatans = $divisis->flatMap(function($d) {
+        return is_array($d->daftar_jabatan) ? array_keys($d->daftar_jabatan) : [];
+    })->toArray();
+    $allUniqueJabatans = array_unique(array_merge($karyawanJabatans, $masterJabatans));
+    sort($allUniqueJabatans);
 @endphp
 
 <div x-data="{ 
@@ -30,13 +44,32 @@
     searchQuery: '',
     filterDivisi: '',
     filterJabatan: '',
+    // Data jabatan per divisi dari backend
+    divisiMap: {{ json_encode($divisiJabatanMap) }},
+    // Semua jabatan unik
+    allJabatans: {{ json_encode($allUniqueJabatans) }},
+
+    // Computed property: Menampilkan jabatan berdasarkan divisi yang dipilih
+    get filteredJabatanOptions() {
+        if (this.filterDivisi === '') {
+            // Jika 'Semua Divisi', tampilkan semua jabatan unik
+            return this.allJabatans;
+        }
+        // Jika divisi dipilih, tampilkan hanya jabatan milik divisi tersebut
+        return this.divisiMap[this.filterDivisi] || [];
+    },
+    
+    // Reset jabatan saat divisi berubah
+    updateDivisi() {
+        this.filterJabatan = '';
+    },
     
     // Fungsi pencarian & filter global
     isMatch(nama, nip, divisiId, jabatan) {
         const matchSearch = nama.toLowerCase().includes(this.searchQuery.toLowerCase()) || 
-                          nip.toLowerCase().includes(this.searchQuery.toLowerCase());
+                            nip.toLowerCase().includes(this.searchQuery.toLowerCase());
         const matchDivisi = this.filterDivisi === '' || divisiId == this.filterDivisi;
-        const matchJabatan = this.filterJabatan === '' || jabatan === this.filterJabatan;
+        const matchJabatan = this.filterJabatan === '' || (jabatan && jabatan.trim() === this.filterJabatan.trim());
         
         return matchSearch && matchDivisi && matchJabatan;
     }
@@ -89,22 +122,19 @@
             </div>
 
             {{-- Filter Divisi --}}
-            <select x-model="filterDivisi" class="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-[10px] font-bold uppercase tracking-widest focus:ring-2 focus:ring-cdi transition-all">
+            <select x-model="filterDivisi" @change="updateDivisi()" class="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-[10px] font-bold uppercase tracking-widest focus:ring-2 focus:ring-cdi transition-all">
                 <option value="">Semua Divisi</option>
                 @foreach($divisis as $divisi)
                     <option value="{{ $divisi->id }}">{{ $divisi->nama }}</option>
                 @endforeach
             </select>
 
-            {{-- Filter Jabatan --}}
+            {{-- Filter Jabatan (Dinamis: Jika Divisi kosong, muncul Semua Jabatan Unik. Jika Divisi dipilih, muncul jabatan terkait) --}}
             <select x-model="filterJabatan" class="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-[10px] font-bold uppercase tracking-widest focus:ring-2 focus:ring-cdi transition-all">
                 <option value="">Semua Jabatan</option>
-                @php
-                    $jabatans = \App\Models\Karyawan::distinct()->pluck('jabatan');
-                @endphp
-                @foreach($jabatans as $j)
-                    <option value="{{ $j }}">{{ $j }}</option>
-                @endforeach
+                <template x-for="j in filteredJabatanOptions" :key="j">
+                    <option :value="j" x-text="j.toUpperCase()"></option>
+                </template>
             </select>
         </div>
     </div>
@@ -329,7 +359,7 @@
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-slate-50/20">
-                            <th class="px-8 py-4 text-[9px] font-black uppercase text-slate-400">Karyawan</th>
+                            <th class="px-8 py-4 text-[9px] font-black uppercase text-slate-400">Karyawan</th> 
                             <th class="px-8 py-4 text-[9px] font-black uppercase text-slate-400">Jenis</th>
                             <th class="px-8 py-4 text-[9px] font-black uppercase text-slate-400 text-center">Status</th>
                             <th class="px-8 py-4 text-[9px] font-black uppercase text-slate-400 text-right">Waktu Proses</th>
@@ -367,7 +397,6 @@
 <script>
     /**
      * MENGUBAH KOORDINAT MENJADI ALAMAT TEKS (REVERSE GEOCODING)
-     * Format: Jalan/Dukuh, Desa/Kelurahan, Kecamatan, Kota/Kabupaten, Negara
      */
     async function reverseGeocode() {
         const elements = document.querySelectorAll('.address-lookup');
@@ -378,7 +407,6 @@
 
             if (lat && lng && lat !== '0' && lng !== '0') {
                 try {
-                    // Menggunakan Nominatim OpenStreetMap (Gratis)
                     const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`, {
                         headers: { 'Accept-Language': 'id' }
                     });
@@ -386,14 +414,12 @@
                     
                     if (data.address) {
                         const addr = data.address;
-                        
-                        // Menyusun alamat sesuai permintaan: Detail Jalan -> Desa -> Kec -> Kota -> Negara
                         const cleanLabel = [
-                            addr.road || addr.suburb || addr.pedestrian || '', // Jalan / Dukuh
-                            addr.village || addr.neighbourhood || addr.hamlet || '', // Desa / Kelurahan
-                            addr.city_district || addr.municipality || '', // Kecamatan
-                            addr.city || addr.regency || '', // Kota / Kabupaten
-                            addr.country || '' // Negara
+                            addr.road || addr.suburb || addr.pedestrian || '', 
+                            addr.village || addr.neighbourhood || addr.hamlet || '', 
+                            addr.city_district || addr.municipality || '', 
+                            addr.city || addr.regency || '', 
+                            addr.country || ''
                         ].filter(Boolean).join(', ');
 
                         el.innerText = cleanLabel.toUpperCase() || 'LOKASI TIDAK DIKENAL';
@@ -403,8 +429,6 @@
                 } catch (error) {
                     el.innerText = 'GAGAL MEMUAT LOKASI';
                 }
-                
-                // Delay 1.2 detik per request untuk mematuhi Kebijakan Nominatim (Rate Limit)
                 await new Promise(r => setTimeout(r, 1200));
             } else {
                 el.innerText = '-';

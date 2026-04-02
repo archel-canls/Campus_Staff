@@ -3,23 +3,23 @@
 
 @section('content')
 <div class="space-y-8 pb-20" x-data="{ showSalary: false }">
-    
+
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
             <h1 class="text-3xl font-black text-cdi uppercase italic tracking-tighter">E-Payroll <span class="text-cdi-orange">CDI</span></h1>
             <p class="text-slate-500 font-medium">Transparansi gaji dan riwayat pendapatan Anda.</p>
         </div>
-        
+
         {{-- Form Filter dengan Auto-Submit --}}
         <form id="filterForm" action="{{ route('karyawan.payroll') }}" method="GET" class="flex items-center gap-2 bg-white p-2 rounded-3xl shadow-sm border border-slate-100">
             <select name="bulan" onchange="document.getElementById('filterForm').submit()" class="bg-transparent border-none font-bold text-cdi focus:ring-0 cursor-pointer">
                 @foreach(range(1, 12) as $m)
-                    <option value="{{ $m }}" {{ $bulan == $m ? 'selected' : '' }}>{{ \Carbon\Carbon::create(2025, $m, 1)->translatedFormat('F') }}</option>
+                <option value="{{ $m }}" {{ $bulan == $m ? 'selected' : '' }}>{{ \Carbon\Carbon::create(2025, $m, 1)->translatedFormat('F') }}</option>
                 @endforeach
             </select>
             <select name="tahun" onchange="document.getElementById('filterForm').submit()" class="bg-transparent border-none font-bold text-cdi focus:ring-0 cursor-pointer">
                 @foreach(range(now()->year, now()->year - 2) as $y)
-                    <option value="{{ $y }}" {{ $tahun == $y ? 'selected' : '' }}>{{ $y }}</option>
+                <option value="{{ $y }}" {{ $tahun == $y ? 'selected' : '' }}>{{ $y }}</option>
                 @endforeach
             </select>
             {{-- Tombol Cari dihapus untuk otomasi --}}
@@ -29,7 +29,7 @@
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div class="lg:col-span-2 bg-cdi rounded-[3rem] p-10 text-white shadow-2xl relative overflow-hidden group">
             <div class="absolute -right-10 -top-10 w-64 h-64 bg-white/5 rounded-full blur-3xl group-hover:scale-125 transition-all duration-700"></div>
-            
+
             <div class="relative z-10 space-y-6">
                 <div class="flex justify-between items-start">
                     <span class="bg-white/20 backdrop-blur-md px-4 py-1 rounded-full text-xs font-black uppercase tracking-widest">
@@ -42,7 +42,7 @@
 
                 <div>
                     <p class="text-white/70 font-medium italic">Take Home Pay (THP)</p>
-                    <h2 class="text-6xl font-black italic tracking-tighter transition-all" 
+                    <h2 class="text-6xl font-black italic tracking-tighter transition-all"
                         x-text="showSalary ? 'Rp {{ number_format($grandTotal, 0, ',', '.') }}' : 'Rp •••••••••'">
                     </h2>
                 </div>
@@ -75,11 +75,13 @@
             <div class="relative">
                 <div class="w-32 h-32 rounded-3xl bg-slate-100 overflow-hidden border-4 border-cdi-orange shadow-lg">
                     @if($karyawan->foto)
-                        <img src="{{ asset('storage/'.$karyawan->foto) }}" class="w-full h-full object-cover">
+                    {{-- Path disesuaikan dengan folder penyimpanan di Controller --}}
+                    <img src="{{ asset('storage/karyawan/foto/'.$karyawan->foto) }}" class="w-full h-full object-cover">
                     @else
-                        <div class="w-full h-full flex items-center justify-center text-4xl font-black text-slate-300 bg-slate-100">
-                            {{ $karyawan->initials }}
-                        </div>
+                    {{-- Tampilan saat foto kosong: Background Oranye CDI, Teks Putih --}}
+                    <div class="w-full h-full flex items-center justify-center text-4xl font-black text-white bg-cdi-orange italic">
+                        {{ $karyawan->initials }}
+                    </div>
                     @endif
                 </div>
             </div>
@@ -168,8 +170,8 @@
                                 </p>
                             </td>
                             <td class="p-6 text-center">
-                                <a href="{{ route('karyawan.payroll', ['bulan' => $h->bulan, 'tahun' => $h->tahun]) }}" 
-                                   class="inline-flex items-center justify-center w-10 h-10 bg-slate-100 text-slate-400 rounded-xl hover:bg-cdi-orange hover:text-white transition-all shadow-sm">
+                                <a href="{{ route('karyawan.payroll', ['bulan' => $h->bulan, 'tahun' => $h->tahun]) }}"
+                                    class="inline-flex items-center justify-center w-10 h-10 bg-slate-100 text-slate-400 rounded-xl hover:bg-cdi-orange hover:text-white transition-all shadow-sm">
                                     <i class="fas fa-arrow-right"></i>
                                 </a>
                             </td>
@@ -193,13 +195,42 @@
 
 <style>
     @media print {
-        body { background: white !important; }
-        aside, nav, form, button, .print\:hidden, .fa-history, .history-section { display: none !important; }
-        .bg-cdi { background: #1e293b !important; -webkit-print-color-adjust: exact; color: white !important; border-radius: 2rem !important; }
-        .bg-slate-50 { background: #f8fafc !important; }
-        .text-cdi-orange { color: #f97316 !important; }
-        h2 { color: white !important; }
-        [x-text] { content: attr(x-text) !important; }
+        body {
+            background: white !important;
+        }
+
+        aside,
+        nav,
+        form,
+        button,
+        .print\:hidden,
+        .fa-history,
+        .history-section {
+            display: none !important;
+        }
+
+        .bg-cdi {
+            background: #1e293b !important;
+            -webkit-print-color-adjust: exact;
+            color: white !important;
+            border-radius: 2rem !important;
+        }
+
+        .bg-slate-50 {
+            background: #f8fafc !important;
+        }
+
+        .text-cdi-orange {
+            color: #f97316 !important;
+        }
+
+        h2 {
+            color: white !important;
+        }
+
+        [x-text] {
+            content: attr(x-text) !important;
+        }
     }
 </style>
 @endsection

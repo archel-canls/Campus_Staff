@@ -1,6 +1,6 @@
 <?php
 
-use Illuminate\Support\Facades\Route; 
+use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\Admin\AbsensiController;
 use App\Http\Controllers\Admin\ManajemenKaryawanController;
@@ -28,7 +28,7 @@ use Illuminate\Support\Facades\Auth;
 Route::get('/', function () {
     if (Auth::check()) {
         $role = Auth::user()->role;
-        
+
         if ($role === 'admin') {
             return redirect()->route('admin.dashboard');
         } elseif ($role === 'scanner') {
@@ -48,9 +48,28 @@ Route::get('/', function () {
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
+    // Tambahkan alias login agar redirect middleware 'auth' bawaan Laravel tidak error
     Route::post('/login', [AuthController::class, 'login']);
+
+    // RUTE REGISTRASI & OTP
     Route::get('/register', [AuthController::class, 'showRegister'])->name('register');
     Route::post('/register', [AuthController::class, 'register']);
+
+    /**
+     * Fitur Verifikasi OTP via Gmail
+     * Digunakan pada popup modal di halaman register sebelum form disubmit.
+     */
+    Route::post('/otp/send', [AuthController::class, 'sendOtp'])->name('otp.send');
+    Route::post('/otp/verify', [AuthController::class, 'verifyOtp'])->name('otp.verify');
+
+    /**
+     * FITUR LUPA USERNAME & PASSWORD (OTP RESET)
+     * Menangani pemulihan akun secara mandiri melalui email.
+     * Nama rute disesuaikan dengan pemanggilan di file login.blade.php
+     */
+    Route::post('/forgot/fetch', [AuthController::class, 'handleForgotFetch'])->name('forgot.fetch');
+    Route::post('/forgot/verify-otp', [AuthController::class, 'verifyResetOtp'])->name('forgot.verify.otp');
+    Route::post('/forgot/finalize', [AuthController::class, 'finalizeReset'])->name('forgot.reset.final');
 });
 
 Route::post('/logout', [AuthController::class, 'logout'])
@@ -61,11 +80,13 @@ Route::post('/logout', [AuthController::class, 'logout'])
 |--------------------------------------------------------------------------
 | 3. GRUP SCANNER & ADMIN (Akses Khusus Mesin Scanner)
 |--------------------------------------------------------------------------
+| Memberikan akses ke fitur scan bagi admin maupun akun khusus scanner.
 */
 
 Route::middleware(['auth', 'role:admin,scanner'])->group(function () {
     Route::prefix('absensi')->group(function () {
         Route::get('/scan', [AbsensiController::class, 'scan'])->name('absensi.scan');
+        // Mendukung submit data absensi dari scanner
         Route::post('/submit', [AbsensiController::class, 'submit'])->name('absensi.submit');
     });
 });
@@ -92,7 +113,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
 
     // CRUD Utama Karyawan
     Route::resource('manajemen-karyawan', ManajemenKaryawanController::class);
-    
+
     // Custom action untuk download ID Card & Kelola Password dari sisi Admin
     Route::get('/manajemen-karyawan/{id}/download-id-card', [ManajemenKaryawanController::class, 'downloadIdCard'])
         ->name('manajemen-karyawan.download-id-card');
@@ -101,6 +122,21 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
     Route::prefix('absensi')->group(function () {
         Route::get('/riwayat', [AbsensiController::class, 'riwayat'])->name('absensi.riwayat');
         Route::get('/laporan', [AbsensiController::class, 'laporan'])->name('absensi.laporan');
+
+        // RUTE ABSENSI MANUAL (Store, Update, Destroy)
+        Route::post('/store-manual', [AbsensiController::class, 'storeManual'])->name('absensi.store-manual');
+
+        /**
+         * FIX ROUTE: Store Absensi Bulk/Masal
+         * Diselaraskan menjadi 'absensi.storeBulkManual' agar sesuai dengan pemanggilan di file blade laporan.
+         */
+        Route::post('/store-bulk-manual', [AbsensiController::class, 'storeBulkManual'])->name('absensi.storeBulkManual');
+
+        Route::put('/update/{id}', [AbsensiController::class, 'update'])->name('absensi.update');
+        Route::delete('/destroy/{id}', [AbsensiController::class, 'destroy'])->name('absensi.destroy');
+
+        // RUTE UPDATE ABSENSI MANUAL: Dari halaman Laporan (via AJAX)
+        Route::post('/update-laporan', [AbsensiController::class, 'updateLaporanManual'])->name('admin.absensi.update-laporan');
     });
 
     // Fitur Pengaturan Hari Libur Nasional/Kantor
@@ -115,25 +151,25 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
 
     // --- PAYROLL SYSTEM (Sistem Penggajian Lengkap) ---
     Route::prefix('payroll')->group(function () {
-        
+
         /**
          * Rute Utama Payroll
          */
         Route::get('/', [PayrollController::class, 'index'])->name('payroll.index');
         Route::get('/main', [PayrollController::class, 'index'])->name('admin.payroll');
-        
+
         /**
          * CONFIG GLOBAL (Tunjangan & Rate Absensi)
          */
         Route::post('/config', [PayrollController::class, 'store'])->name('payroll.config');
         Route::post('/update-tunjangan', [PayrollController::class, 'store'])->name('payroll.update_tunjangan');
         Route::post('/update-global-rate', [PayrollController::class, 'updateRateAbsensi'])->name('payroll.update_rate_absensi');
-        
+
         /**
          * UPDATE DATA MASSAL / GRUP
          */
         Route::post('/update-gaji-jabatan', [PayrollController::class, 'updateGajiJabatan'])->name('payroll.update_gaji_jabatan');
-        
+
         /**
          * UPDATE DATA INDIVIDU & AJAX
          */
@@ -143,7 +179,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
         // Update Gaji Pokok / Rate Individu (Handled by update method)
         Route::post('/update-rate', [PayrollController::class, 'update'])->name('payroll.update_hourly_rate');
         Route::post('/update-gaji-pokok', [PayrollController::class, 'update'])->name('payroll.update_gaji_pokok');
-        
+
         // Update Bonus Tambahan (Individu/Grup)
         Route::post('/update-bonus', [PayrollController::class, 'updateBonus'])->name('payroll.update_bonus');
 
@@ -161,7 +197,7 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
          */
         // RUTE PENTING: Untuk mengunci/simpan snapshot payroll individu
         Route::post('/lock/{id}', [PayrollController::class, 'lockPayroll'])->name('payroll.lock');
-        
+
         Route::post('/lock-all', [PayrollController::class, 'lockAll'])->name('payroll.lock_all');
         Route::delete('/destroy', [PayrollController::class, 'destroy'])->name('payroll.destroy'); // Reset Periode
         Route::get('/export', [PayrollController::class, 'export'])->name('payroll.export');
@@ -174,8 +210,8 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
 
     // --- MANAJEMEN DIVISI (Dinamis & Kuota Jabatan) ---
     Route::resource('divisi', DivisiController::class);
-    
-    Route::prefix('divisi-action')->name('divisi.')->group(function() {
+
+    Route::prefix('divisi-action')->name('divisi.')->group(function () {
         Route::post('/{id}/tambah-anggota', [DivisiController::class, 'tambahAnggota'])->name('tambah-anggota');
         Route::post('/hapus-anggota/{karyawan_id}', [DivisiController::class, 'hapusAnggota'])->name('hapus-anggota');
         Route::patch('/{id}/update-jabatan', [DivisiController::class, 'updateJabatan'])->name('update-jabatan');
@@ -192,27 +228,27 @@ Route::middleware(['auth', 'role:karyawan'])->prefix('karyawan')->group(function
 
     // Dashboard Karyawan
     Route::get('/dashboard', [AbsensiController::class, 'dashboardKaryawan'])->name('karyawan.dashboard');
-    
+
     // Digital ID Card & Profil Mandiri
     Route::get('/id-card', [ManajemenKaryawanController::class, 'showSelf'])->name('karyawan.id-card');
-    
-    // Update Foto Profil
+
+    // Update Foto Profil Mandiri (AJAX/Form)
     Route::post('/update-foto', [ManajemenKaryawanController::class, 'updateFoto'])->name('karyawan.update-foto');
 
     // Riwayat Absensi Pribadi
     Route::get('/absensi', [AbsensiController::class, 'riwayatSaya'])->name('karyawan.absensi');
 
     // Modul Pengajuan Izin/Sakit (Self-Service)
-    Route::get('/perizinan', function () { 
-        return view('karyawan.perizinan'); 
+    Route::get('/perizinan', function () {
+        return view('karyawan.perizinan');
     })->name('karyawan.perizinan');
-    
+
     Route::post('/perizinan/store', [AbsensiController::class, 'storeIzin'])
         ->name('karyawan.perizinan.store');
 
     // Informasi Struktur Organisasi & Detail Jabatan Saya
-    Route::get('/jabatan', function () { 
-        return view('karyawan.jabatan'); 
+    Route::get('/jabatan', function () {
+        return view('karyawan.jabatan');
     })->name('karyawan.jabatan');
 
     // Slip Gaji Bulanan (Akses Mandiri Karyawan)

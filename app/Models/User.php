@@ -14,6 +14,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $username
  * @property string $email
  * @property string $password
+ * @property string $otp_code
+ * @property \Carbon\Carbon $otp_expires_at
+ * @property string|null $reset_otp_code
+ * @property \Carbon\Carbon|null $reset_otp_expires_at
  * @property string $role
  * @property bool $is_active
  * @property int|null $karyawan_id
@@ -25,14 +29,19 @@ class User extends Authenticatable
 
     /**
      * Atribut yang dapat diisi secara massal (Mass Assignment).
+     * Telah ditambahkan field reset_otp_code dan reset_otp_expires_at untuk fitur lupa password.
      */
     protected $fillable = [
         'name',
-        'username',   // Identitas login utama
+        'username',       // Identitas login utama
         'email',
         'password',
-        'role',       // 'admin', 'karyawan', atau 'scanner'
-        'is_active',  // Status persetujuan admin
+        'otp_code',       // Kode OTP untuk registrasi
+        'otp_expires_at', // Waktu kadaluarsa OTP registrasi
+        'reset_otp_code', // Kode OTP untuk reset password
+        'reset_otp_expires_at', // Waktu kadaluarsa OTP reset password
+        'role',           // 'admin', 'karyawan', atau 'scanner'
+        'is_active',      // Status persetujuan admin
         'karyawan_id',
     ];
 
@@ -42,6 +51,8 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'otp_code',
+        'reset_otp_code',
     ];
 
     /**
@@ -49,10 +60,12 @@ class User extends Authenticatable
      * Laravel modern menghapus kebutuhan manual Hash::make jika cast 'hashed' aktif.
      */
     protected $casts = [
-        'email_verified_at' => 'datetime',
-        'password' => 'hashed', 
-        'is_active' => 'boolean',
-        'karyawan_id' => 'integer',
+        'email_verified_at'    => 'datetime',
+        'otp_expires_at'       => 'datetime',
+        'reset_otp_expires_at' => 'datetime', // Cast ke Carbon instance untuk reset password
+        'password'             => 'hashed',
+        'is_active'            => 'boolean',
+        'karyawan_id'          => 'integer',
     ];
 
     /*
@@ -126,7 +139,7 @@ class User extends Authenticatable
      */
     public function getInitialsAttribute(): string
     {
-        $words = explode(' ', $this->name);
+        $words = explode(' ', trim($this->name));
         if (count($words) >= 2) {
             return mb_substr($words[0], 0, 1) . mb_substr(end($words), 0, 1);
         }
@@ -143,7 +156,7 @@ class User extends Authenticatable
         if ($this->karyawan && $this->karyawan->foto) {
             return asset('storage/karyawan/foto/' . $this->karyawan->foto);
         }
-        
+
         // Mengembalikan placeholder avatar jika foto tidak ada
         return 'https://ui-avatars.com/api/?name=' . urlencode($this->name) . '&background=003366&color=fff';
     }

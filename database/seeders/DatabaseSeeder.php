@@ -25,8 +25,8 @@ class DatabaseSeeder extends Seeder
         $currentYear = now()->year;
 
         // 1. BUAT DATA MASTER DIVISI (Gaji Divisi Berbeda tiap Bulan)
-        $itGaji = ($currentMonth == 2) ? 10000000 : 9000000; 
-        $mktGaji = ($currentMonth == 2) ? 7000000 : 8500000;  
+        $itGaji = ($currentMonth == 2) ? 10000000 : 9000000;
+        $mktGaji = ($currentMonth == 2) ? 7000000 : 8500000;
 
         $masterDivisi = [
             [
@@ -75,7 +75,7 @@ class DatabaseSeeder extends Seeder
         $divisiIds = [];
         foreach ($masterDivisi as $d) {
             $createdDivisi = Divisi::updateOrCreate(
-                ['kode' => $d['kode']], 
+                ['kode' => $d['kode']],
                 [
                     'nama' => $d['nama'],
                     'deskripsi' => $d['deskripsi'],
@@ -88,13 +88,15 @@ class DatabaseSeeder extends Seeder
             $divisiIds[$d['nama']] = $createdDivisi->id;
         }
 
-        // 2. BUAT AKUN NON-KARYAWAN (Otomatis Aktif)
+        // 2. BUAT AKUN NON-KARYAWAN (Otomatis Aktif & Tanpa OTP)
         User::updateOrCreate(['username' => 'admin'], [
             'name' => 'Administrator CDI',
             'email' => 'admin@cdi.id',
             'password' => Hash::make('password123'),
             'role' => 'admin',
             'is_active' => true,
+            'otp_code' => null,
+            'otp_expires_at' => null,
         ]);
 
         User::updateOrCreate(['username' => 'scanner1'], [
@@ -103,6 +105,8 @@ class DatabaseSeeder extends Seeder
             'password' => Hash::make('password123'),
             'role' => 'scanner',
             'is_active' => true,
+            'otp_code' => null,
+            'otp_expires_at' => null,
         ]);
 
         // 3. DATA KARYAWAN
@@ -110,7 +114,7 @@ class DatabaseSeeder extends Seeder
             [
                 'nama' => 'Archel Arisandi',
                 'username' => 'archel',
-                'nip' => '260219505001', 
+                'nip' => '260219505001',
                 'nik' => '3301234567890001',
                 'email' => 'archel@cdi.id',
                 'jk' => 'L',
@@ -129,12 +133,12 @@ class DatabaseSeeder extends Seeder
                 'goldar' => 'O',
                 'tanggungan' => 2,
                 'gaji_custom_januari' => 2000000,
-                'gaji_custom_februari' => 3000000 
+                'gaji_custom_februari' => 3000000
             ],
             [
-                'nama' => 'Reza Kurniawan', 
+                'nama' => 'Reza Kurniawan',
                 'username' => 'reza',
-                'nip' => '260219505004', 
+                'nip' => '260219505004',
                 'nik' => '3301234567890004',
                 'email' => 'reza@cdi.id',
                 'jk' => 'L',
@@ -153,12 +157,12 @@ class DatabaseSeeder extends Seeder
                 'goldar' => 'B',
                 'tanggungan' => 1,
                 'gaji_custom_januari' => 1800000,
-                'gaji_custom_februari' => 2500000 
+                'gaji_custom_februari' => 2500000
             ],
             [
                 'nama' => 'Budi Santoso',
                 'username' => 'budi',
-                'nip' => '260210308002', 
+                'nip' => '260210308002',
                 'nik' => '3301234567890002',
                 'email' => 'budi@cdi.id',
                 'jk' => 'L',
@@ -177,12 +181,12 @@ class DatabaseSeeder extends Seeder
                 'goldar' => 'A',
                 'tanggungan' => 0,
                 'gaji_custom_januari' => 1500000,
-                'gaji_custom_februari' => 1800000 
+                'gaji_custom_februari' => 1800000
             ],
             [
                 'nama' => 'Siti Aminah',
                 'username' => 'sitia',
-                'nip' => '260220401003', 
+                'nip' => '260220401003',
                 'nik' => '3301234567890003',
                 'email' => 'siti@cdi.id',
                 'jk' => 'P',
@@ -211,14 +215,14 @@ class DatabaseSeeder extends Seeder
             try {
                 $divisiId = $divisiIds[$data['divisi_nama']] ?? null;
                 $divisi = Divisi::find($divisiId);
-                
+
                 $gajiPokok = ($currentMonth == 2) ? $data['gaji_custom_februari'] : $data['gaji_custom_januari'];
                 $ratePerJam = ($currentMonth == 2) ? 30000 : 25000;
                 $tunjanganPerKepala = ($currentMonth == 2) ? 300000 : 200000;
 
                 // A. Simpan Profil Karyawan
                 $karyawan = Karyawan::updateOrCreate(
-                    ['nik' => $data['nik']], 
+                    ['nik' => $data['nik']],
                     [
                         'nama' => $data['nama'],
                         'nip' => $data['nip'],
@@ -240,22 +244,25 @@ class DatabaseSeeder extends Seeder
                         'emergency_1_hubungan' => $data['emergency']['hub'],
                         'emergency_1_telp' => $data['emergency']['telp'],
                         'jumlah_tanggungan' => $data['tanggungan'],
-                        'tunjangan_per_tanggungan' => $tunjanganPerKepala, 
-                        'barcode_token' => $data['nip'], 
+                        'tunjangan_per_tanggungan' => $tunjanganPerKepala,
+                        'barcode_token' => $data['nip'],
                         'gaji_pokok' => $gajiPokok,
                     ]
                 );
 
-                // B. Simpan Akun User (is_active diset true agar data seeder bisa langsung login)
+                // B. Simpan Akun User
+                // is_active diset true agar data seeder bisa langsung login tanpa verifikasi admin
                 User::updateOrCreate(
                     ['username' => strtolower($data['username'])],
                     [
                         'name' => $karyawan->nama,
                         'email' => $data['email'],
-                        'password' => Hash::make('password123'), 
+                        'password' => Hash::make('password123'),
                         'role' => 'karyawan',
                         'karyawan_id' => $karyawan->id,
-                        'is_active' => true, // User dari seeder dianggap sudah dikonfirmasi
+                        'is_active' => true,
+                        'otp_code' => null,
+                        'otp_expires_at' => null,
                     ]
                 );
 
@@ -277,15 +284,15 @@ class DatabaseSeeder extends Seeder
                 // D. LOGIKA ABSENSI KHUSUS REZA KURNIAWAN
                 if ($data['nama'] === 'Reza Kurniawan') {
                     $yesterday = Carbon::yesterday();
-                    
+
                     // Absen Kemarin (Jam 8 - 4)
                     Absensi::updateOrCreate(
                         [
-                            'karyawan_id' => $karyawan->id, 
+                            'karyawan_id' => $karyawan->id,
                             'jam_masuk' => $yesterday->copy()->setHour(8)->setMinute(0)->setSecond(0)
                         ],
                         [
-                            'jam_keluar' => $yesterday->copy()->setHour(16)->setMinute(0)->setSecond(0), 
+                            'jam_keluar' => $yesterday->copy()->setHour(16)->setMinute(0)->setSecond(0),
                             'keterangan' => 'Hadir'
                         ]
                     );
@@ -293,11 +300,11 @@ class DatabaseSeeder extends Seeder
                     // Absen Februari Tanggal 20 (Jam 8 - 4)
                     Absensi::updateOrCreate(
                         [
-                            'karyawan_id' => $karyawan->id, 
-                            'jam_masuk' => Carbon::create(2026, 2, 20, 8, 0, 0)
+                            'karyawan_id' => $karyawan->id,
+                            'jam_masuk' => Carbon::create($currentYear, 2, 20, 8, 0, 0)
                         ],
                         [
-                            'jam_keluar' => Carbon::create(2026, 2, 20, 16, 0, 0), 
+                            'jam_keluar' => Carbon::create($currentYear, 2, 20, 16, 0, 0),
                             'keterangan' => 'Hadir'
                         ]
                     );
@@ -309,9 +316,9 @@ class DatabaseSeeder extends Seeder
                 $this->command->error("Gagal seeding: " . $data['nama'] . ". Error: " . $e->getMessage());
             }
         }
-        
+
         $this->command->info('✅ Database Full Seeder Selesai!');
-        $this->command->info("- Akun Master & Karyawan telah diset 'is_active' => true (Siap Digunakan).");
-        $this->command->info("- Pendaftar baru melalui form Registrasi otomatis akan memerlukan konfirmasi Admin.");
+        $this->command->info("- Akun Master (Admin/Scanner) & Karyawan Default telah diaktifkan.");
+        $this->command->info("- Data OTP diset kosong untuk user seeder.");
     }
 }

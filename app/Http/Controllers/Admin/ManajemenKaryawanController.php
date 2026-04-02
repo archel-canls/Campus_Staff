@@ -27,18 +27,18 @@ class ManajemenKaryawanController extends Controller
         // Fitur Pencarian
         if ($request->has('search') && $request->search != '') {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('nama', 'like', '%' . $search . '%')
-                  ->orWhere('nip', 'like', '%' . $search . '%')
-                  ->orWhere('nik', 'like', '%' . $search . '%')
-                  ->orWhereHas('divisi', function($sq) use ($search) {
-                      $sq->where('nama', 'like', '%' . $search . '%');
-                  });
+                    ->orWhere('nip', 'like', '%' . $search . '%')
+                    ->orWhere('nik', 'like', '%' . $search . '%')
+                    ->orWhereHas('divisi', function ($sq) use ($search) {
+                        $sq->where('nama', 'like', '%' . $search . '%');
+                    });
             });
         }
 
         // Ambil data yang usernya sudah aktif
-        $karyawans = $query->whereHas('user', function($q) {
+        $karyawans = $query->whereHas('user', function ($q) {
             $q->where('is_active', true);
         })->latest()->get();
 
@@ -75,7 +75,7 @@ class ManajemenKaryawanController extends Controller
         try {
             // 1. Ambil Divisi & Cek Kuota
             $divisi = Divisi::findOrFail($request->divisi_id);
-            
+
             if ($divisi->getSisaKuota($request->jabatan) <= 0) {
                 return redirect()->back()->withInput()->with('error', 'Kuota untuk jabatan ' . $request->jabatan . ' di divisi ini sudah penuh!');
             }
@@ -109,8 +109,7 @@ class ManajemenKaryawanController extends Controller
 
             DB::commit();
             return redirect()->route('manajemen-karyawan.index')
-                             ->with('success', 'Personel baru berhasil didaftarkan!');
-
+                ->with('success', 'Personel baru berhasil didaftarkan!');
         } catch (Exception $e) {
             DB::rollBack();
             return redirect()->back()->withInput()->with('error', 'Gagal: ' . $e->getMessage());
@@ -142,7 +141,7 @@ class ManajemenKaryawanController extends Controller
     public function update(Request $request, string $id)
     {
         $karyawan = Karyawan::findOrFail($id);
-        
+
         $request->validate([
             'nama'      => 'required|string|max:255',
             'nip'       => ['required', 'string', Rule::unique('karyawans')->ignore($karyawan->id)],
@@ -173,8 +172,7 @@ class ManajemenKaryawanController extends Controller
 
             DB::commit();
             return redirect()->route('manajemen-karyawan.index')
-                             ->with('success', 'Data personel berhasil diperbarui!');
-
+                ->with('success', 'Data karyawan berhasil diperbarui!');
         } catch (Exception $e) {
             DB::rollBack();
             return redirect()->back()->withInput()->with('error', 'Gagal memperbarui data.');
@@ -187,12 +185,12 @@ class ManajemenKaryawanController extends Controller
     public function destroy(string $id)
     {
         $karyawan = Karyawan::findOrFail($id);
-        
+
         try {
             // Note: Logic penghapusan file & user sudah ada di static::deleting model Karyawan
             $karyawan->delete();
             return redirect()->route('manajemen-karyawan.index')
-                             ->with('success', 'Data personel dan akun terkait telah dihapus.');
+                ->with('success', 'Data karyawan dan akun terkait telah dihapus.');
         } catch (Exception $e) {
             return redirect()->back()->with('error', 'Gagal menghapus data.');
         }
@@ -210,13 +208,13 @@ class ManajemenKaryawanController extends Controller
     public function permohonan(Request $request)
     {
         $search = $request->search;
-        
+
         // Mengambil data Divisi untuk dikirim ke View (Digunakan di Form Modal Approve)
         $divisis = Divisi::all();
 
         $permohonans = User::where('is_active', false)
             ->whereNotNull('karyawan_id')
-            ->when($search, function($q) use ($search) {
+            ->when($search, function ($q) use ($search) {
                 $q->where('name', 'like', "%$search%");
             })
             ->with('karyawan.divisi')
@@ -233,7 +231,7 @@ class ManajemenKaryawanController extends Controller
     public function approve(Request $request, $id)
     {
         $user = User::findOrFail($id);
-        
+
         // Validasi input dari modal permohonan
         $request->validate([
             'divisi_id' => 'required|exists:divisis,id',
@@ -244,7 +242,7 @@ class ManajemenKaryawanController extends Controller
         try {
             if ($user->karyawan) {
                 $divisi = Divisi::findOrFail($request->divisi_id);
-                
+
                 // CEK SISA KUOTA (Mencegah pendaftaran melebihi kapasitas struktur organisasi)
                 if ($divisi->getSisaKuota($request->jabatan) <= 0) {
                     return redirect()->back()->with('error', 'Gagal: Kuota untuk jabatan ' . $request->jabatan . ' di divisi ' . $divisi->nama . ' sudah penuh!');
@@ -253,11 +251,13 @@ class ManajemenKaryawanController extends Controller
                 // Ambil gaji pokok otomatis berdasarkan standar divisi & jabatan
                 $gajiPokok = $divisi->getGajiJabatan($request->jabatan);
 
+                // Update data karyawan: Pastikan kolom 'status' tidak berubah (tetap sesuai pilihan saat daftar)
                 $user->karyawan->update([
-                    'divisi_id'     => $request->divisi_id, 
-                    'jabatan'       => $request->jabatan,   
+                    'divisi_id'     => $request->divisi_id,
+                    'jabatan'       => $request->jabatan,
                     'gaji_pokok'    => $gajiPokok,
                     'tanggal_masuk' => now(),
+                    // 'status' tidak dimasukkan di sini agar tetap menggunakan nilai saat registrasi awal
                 ]);
             }
 
@@ -266,7 +266,7 @@ class ManajemenKaryawanController extends Controller
 
             DB::commit();
             return redirect()->route('manajemen-karyawan.permohonan')
-                             ->with('success', 'Akun ' . $user->name . ' sekarang aktif dengan jabatan ' . $request->jabatan);
+                ->with('success', 'Akun ' . $user->name . ' sekarang aktif dengan jabatan ' . $request->jabatan);
         } catch (Exception $e) {
             DB::rollBack();
             return redirect()->back()->with('error', 'Gagal: ' . $e->getMessage());
@@ -283,7 +283,7 @@ class ManajemenKaryawanController extends Controller
         try {
             if ($user->karyawan) {
                 // Menghapus karyawan akan otomatis menghapus user & foto (via Boot Model Karyawan)
-                $user->karyawan->delete(); 
+                $user->karyawan->delete();
             } else {
                 $user->delete();
             }
@@ -330,7 +330,7 @@ class ManajemenKaryawanController extends Controller
 
             $filename = 'self_' . time() . '_' . Str::random(5) . '.' . $request->foto->extension();
             $request->file('foto')->storeAs('karyawan/foto', $filename, 'public');
-            
+
             $karyawan->update(['foto' => $filename]);
 
             return response()->json([

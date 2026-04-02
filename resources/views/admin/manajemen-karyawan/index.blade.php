@@ -34,12 +34,12 @@
             <p class="text-3xl font-black text-cdi mt-1 italic">{{ $karyawans->count() }} <span class="text-xs not-italic font-bold text-slate-300">Jiwa</span></p>
         </div>
         <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm group">
-            <p class="text-[9px] font-black text-blue-400 uppercase tracking-[0.15em]">Staf Tetap</p>
-            <p class="text-3xl font-black text-cdi mt-1 italic">{{ $karyawans->where('status', 'tetap')->count() }}</p>
+            <p class="text-[9px] font-black text-blue-400 uppercase tracking-[0.15em]">Staf (Tetap/Kontrak)</p>
+            <p class="text-3xl font-black text-cdi mt-1 italic">{{ $karyawans->whereIn('status', ['tetap', 'kontrak'])->count() }}</p>
         </div>
         <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm group">
             <p class="text-[9px] font-black text-cdi-orange uppercase tracking-[0.15em]">Peserta Magang</p>
-            <p class="text-3xl font-black text-cdi mt-1 italic">{{ $karyawans->whereIn('status', ['magang_kampus', 'magang_mandiri'])->count() }}</p>
+            <p class="text-3xl font-black text-cdi mt-1 italic">{{ $karyawans->whereIn('status', ['magang_kampus', 'magang_mandiri', 'magang_mbkm', 'magang_ppl'])->count() }}</p>
         </div>
         <div class="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm group">
             <p class="text-[9px] font-black text-green-400 uppercase tracking-[0.15em]">Departemen</p>
@@ -72,6 +72,7 @@
             <select id="filterStatus" class="w-full bg-slate-50 border-none rounded-2xl py-4 px-6 text-[11px] font-bold text-cdi outline-none cursor-pointer uppercase appearance-none focus:ring-2 focus:ring-cdi-orange/20">
                 <option value="">Semua Status</option>
                 <option value="tetap">Staf Tetap</option>
+                <option value="kontrak">Staf Kontrak</option>
                 <option value="magang">Peserta Magang</option>
             </select>
             <i class="fas fa-chevron-down absolute right-6 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[10px]"></i>
@@ -101,7 +102,7 @@
                     @forelse($karyawans as $k)
                     <tr class="hover:bg-slate-50/80 transition-all group table-row-item" 
                         data-divisi="{{ $k->divisi->nama ?? 'N/A' }}"
-                        data-status-type="{{ Str::contains($k->status, 'magang') ? 'magang' : 'tetap' }}">
+                        data-status-type="{{ Str::contains($k->status, 'magang') ? 'magang' : ($k->status == 'kontrak' ? 'kontrak' : 'tetap') }}">
                         <td class="px-10 py-6">
                             <div class="flex items-center space-x-5">
                                 <div class="relative">
@@ -137,11 +138,23 @@
                                     </span>
                                     <span class="text-[8px] font-bold text-slate-300 uppercase italic ml-1">Terdaftar: {{ \Carbon\Carbon::parse($k->tanggal_masuk)->translatedFormat('d M Y') }}</span>
                                 </div>
+                            @elseif($k->status == 'kontrak')
+                                <div class="flex flex-col gap-1.5">
+                                    <span class="bg-purple-50 text-purple-600 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest w-fit border border-purple-100 shadow-sm shadow-purple-100">
+                                        <i class="fas fa-file-contract mr-1.5"></i> Karyawan Kontrak
+                                    </span>
+                                    <span class="text-[8px] font-bold text-slate-300 uppercase italic ml-1">Terdaftar: {{ \Carbon\Carbon::parse($k->tanggal_masuk)->translatedFormat('d M Y') }}</span>
+                                </div>
                             @else
                                 <div class="flex flex-col gap-2">
                                     <span class="bg-orange-50 text-cdi-orange px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest w-fit border border-orange-100 shadow-sm shadow-orange-100">
                                         <i class="fas fa-user-graduate mr-1.5"></i> 
-                                        {{ $k->status == 'magang_kampus' ? 'Magang Kampus' : 'Magang Mandiri' }}
+                                        @switch($k->status)
+                                            @case('magang_kampus') Magang Kampus @break
+                                            @case('magang_mbkm') Magang MBKM @break
+                                            @case('magang_ppl') Magang PPL @break
+                                            @default Magang Mandiri
+                                        @endswitch
                                     </span>
                                     <div class="flex items-center text-[8px] font-bold text-slate-400 uppercase italic ml-1">
                                         <i class="fas fa-university mr-1.5"></i> 
@@ -175,7 +188,7 @@
                                     <i class="fas fa-folder-open"></i>
                                 </div>
                                 <h4 class="font-black text-cdi italic uppercase tracking-tighter text-2xl leading-none">Database Kosong.</h4>
-                                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-[0.3em] mt-4">Belum ada data personel aktif dalam sistem</p>
+                                <p class="text-[10px] text-slate-400 font-bold uppercase tracking-[0.3em] mt-4">Belum ada data karyawan aktif dalam sistem</p>
                                 <a href="{{ route('manajemen-karyawan.create') }}" class="mt-8 text-cdi-orange font-black uppercase text-[9px] tracking-widest border-b-2 border-cdi-orange pb-1 hover:text-cdi hover:border-cdi transition-all">Daftarkan Personel Baru</a>
                             </div>
                         </td>

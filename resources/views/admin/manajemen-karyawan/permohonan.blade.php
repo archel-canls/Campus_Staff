@@ -25,7 +25,7 @@
     <div class="bg-white p-4 rounded-3xl shadow-sm border border-slate-100 flex flex-wrap gap-4 items-center justify-between">
         <div class="relative w-full md:w-96">
             <i class="fas fa-search absolute left-5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-            <input type="text" id="searchPermohonan" placeholder="CARI NAMA / NIP / INSTANSI..." 
+            <input type="text" id="searchPermohonan" placeholder="CARI NAMA / NIP / INSTANSI..."
                 class="w-full bg-slate-50 border-none rounded-2xl py-4 pl-12 pr-6 text-[11px] font-bold tracking-widest focus:ring-2 focus:ring-cdi-orange transition-all">
         </div>
         <div class="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-2xl">
@@ -48,10 +48,10 @@
                 </thead>
                 <tbody class="divide-y divide-slate-50">
                     @forelse($permohonans as $user)
-                    @php 
-                        $k = $user->karyawan; 
-                        $userData = $user->load('karyawan.divisi');
-                        $encodedData = base64_encode(json_encode($userData));
+                    @php
+                    $k = $user->karyawan;
+                    $userData = $user->load('karyawan.divisi');
+                    $encodedData = base64_encode(json_encode($userData));
                     @endphp
                     <tr class="hover:bg-slate-50/80 transition-colors group row-permohonan">
                         <td class="px-8 py-6">
@@ -76,7 +76,7 @@
                         </td>
                         <td class="px-8 py-6">
                             <div class="flex items-center justify-center gap-2">
-                                <button onclick="showDetailPermohonan('{{ $encodedData }}')" 
+                                <button onclick="showDetailPermohonan('{{ $encodedData }}')"
                                     class="p-3 bg-slate-100 text-slate-400 rounded-xl hover:bg-cdi hover:text-white transition-all shadow-sm" title="Lihat Detail & Verifikasi">
                                     <i class="fas fa-user-check text-xs"></i>
                                 </button>
@@ -119,7 +119,7 @@
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            
+
             <div class="p-8 overflow-y-auto custom-scroll flex-1">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-[11px]">
                     {{-- Sisi Kiri: Foto & NIP --}}
@@ -206,22 +206,22 @@
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label class="text-[9px] font-black text-slate-400 uppercase ml-2 mb-1 block">Pilih Divisi</label>
-                                        <select name="divisi_id" id="selectDivisi" required 
+                                        <select name="divisi_id" id="selectDivisi" required
                                             class="w-full bg-white border-none rounded-xl py-3 px-4 text-[11px] font-bold focus:ring-2 focus:ring-cdi-orange transition-all">
                                             <option value="">-- PILIH DIVISI --</option>
                                             @foreach($divisis as $divisi)
-                                                @php
-                                                    $jabatanData = [];
-                                                    foreach($divisi->daftar_jabatan ?? [] as $namaJabatan => $target) {
-                                                        $jabatanData[$namaJabatan] = [
-                                                            'nama' => $namaJabatan,
-                                                            'sisa' => $divisi->getSisaKuota($namaJabatan)
-                                                        ];
-                                                    }
-                                                @endphp
-                                                <option value="{{ $divisi->id }}" data-jabatan="{{ json_encode($jabatanData) }}">
-                                                    {{ $divisi->nama }}
-                                                </option>
+                                            @php
+                                            $jabatanData = [];
+                                            foreach($divisi->daftar_jabatan ?? [] as $namaJabatan => $target) {
+                                            $jabatanData[$namaJabatan] = [
+                                            'nama' => $namaJabatan,
+                                            'sisa' => $divisi->getSisaKuota($namaJabatan)
+                                            ];
+                                            }
+                                            @endphp
+                                            <option value="{{ $divisi->id }}" data-jabatan="{{ json_encode($jabatanData) }}">
+                                                {{ $divisi->nama }}
+                                            </option>
                                             @endforeach
                                         </select>
                                     </div>
@@ -287,7 +287,7 @@
         // Fitur Update Jabatan Dinamis berdasarkan Struktur Divisi & Sisa Kuota
         selectDivisi.addEventListener('change', function() {
             const selectedOption = this.options[this.selectedIndex];
-            if(!selectedOption.value) {
+            if (!selectedOption.value) {
                 selectJabatan.innerHTML = '<option value="">-- PILIH JABATAN --</option>';
                 selectJabatan.disabled = true;
                 return;
@@ -296,7 +296,7 @@
             try {
                 const jabatans = JSON.parse(selectedOption.getAttribute('data-jabatan') || '{}');
                 selectJabatan.innerHTML = '<option value="">-- PILIH JABATAN --</option>';
-                
+
                 const keys = Object.keys(jabatans);
                 if (keys.length > 0) {
                     selectJabatan.disabled = false;
@@ -304,7 +304,7 @@
                         const jab = jabatans[key];
                         const opt = document.createElement('option');
                         opt.value = jab.nama;
-                        
+
                         // Cek Sisa Kuota
                         if (jab.sisa <= 0) {
                             opt.disabled = true;
@@ -313,7 +313,7 @@
                         } else {
                             opt.textContent = `${jab.nama.toUpperCase()} (SISA: ${jab.sisa})`;
                         }
-                        
+
                         selectJabatan.appendChild(opt);
                     });
                 } else {
@@ -341,7 +341,7 @@
                 const name = nameTag ? nameTag.innerText.toLowerCase() : '';
                 const nip = nipTag ? nipTag.innerText.toLowerCase() : '';
                 const instansi = instansiTag ? instansiTag.innerText.toLowerCase() : '';
-                
+
                 if (name.includes(val) || nip.includes(val) || instansi.includes(val)) {
                     row.style.display = '';
                 } else {
@@ -354,22 +354,22 @@
     function showDetailPermohonan(encodedData) {
         const user = JSON.parse(atob(encodedData));
         const k = user.karyawan;
-        
+
         // Identitas & Foto
         document.getElementById('detFoto').src = user.profile_photo || '';
         document.getElementById('detNama').innerText = user.name || '-';
         document.getElementById('detNip').innerText = k.nip || '-';
         document.getElementById('detNik').innerText = k.nik || '-';
         document.getElementById('detTtl').innerText = (k.tempat_lahir || '-') + ', ' + (k.tanggal_lahir || '-');
-        
+
         const jkText = k.jenis_kelamin === 'L' ? 'Laki-Laki' : 'Perempuan';
         document.getElementById('detJk').innerText = jkText + ' / Goldar: ' + (k.golongan_darah || '-');
-        
+
         // Status Pendaftaran
         document.getElementById('detInstansi').innerText = k.instansi || '-';
         document.getElementById('detStatus').innerText = k.status ? k.status.replace(/_/g, ' ') : '-';
         document.getElementById('detPendidikan').innerText = (k.pendidikan_terakhir || '-') + ' (' + (k.status_pendidikan || 'Lulus') + ')';
-        
+
         // Kontak
         document.getElementById('detAlamat').innerText = k.alamat_domisili || '-';
         document.getElementById('detTelpEmail').innerText = (k.telepon || '-') + ' / ' + (user.email || '-');
@@ -378,7 +378,7 @@
         document.getElementById('detJmlTanggungan').innerText = k.jumlah_tanggungan || '0';
         const linkBukti = document.getElementById('detBuktiLink');
         const textNoBukti = document.getElementById('noBuktiText');
-        
+
         if (k.bukti_tanggungan) {
             linkBukti.classList.remove('hidden');
             textNoBukti.classList.add('hidden');
